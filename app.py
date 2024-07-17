@@ -9,5 +9,7 @@ QQuickWindow.setSceneGraphBackend('software') # legacy fallback
 app = QGuiApplication(sys.argv)
 engine = QQmlApplicationEngine()
 engine.quit.connect(app.quit)
-engine.load('./UI/main.qml')
+engine.load('./UI/app.qml')
 sys.exit(app.exec())
+
+#TODO: check license via LA
