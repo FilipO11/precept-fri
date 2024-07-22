@@ -2,7 +2,6 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec, padding
 
 def xor_bytes(s1, s2):
-    """Izvede operacijo XOR med podanima seznamoma bajtov in vrne seznam bajtov"""
     res = []
     for i in range(min(len(s1),len(s2))):
         res.append(s1[i] ^ s2[i])
@@ -24,16 +23,21 @@ def acquire_license():
         did = h.read()
     
     tid = LS_public_key.encrypt(
-        plaintext=LA_public_key+xor_bytes(LA_public_key.public_bytes(), did),
-        padding=padding.OAEP(
-            mgf=padding.MGF1(algorithm=hashes.SHA256()),
-            algorithm=hashes.SHA256(),
+        plaintext = LA_public_key.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo) 
+                    + xor_bytes(LA_public_key.public_bytes(), did),
+        padding = padding.OAEP(
+            mgf = padding.MGF1(algorithm=hashes.SHA256()),
+            algorithm = hashes.SHA256(),
         )
     )
     
-    # 1.3 Send TID
+    # 1.3 Get ContentID
+    with open("ids/Content_ID.id", "rb") as h:
+        contentid = h.read()
+    
+    # 1.3 Send license request
     with open("comms/ls.msg", "wb") as h:
-        h.write(tid)
+        h.write(tid + contentid)
 
     # 2. RECEIVE (T_LS || r || {Sig_LS( H(r || T-LS || T_U) || PK_U(License) || ContentID ) || Cert_LS}_K)
 
