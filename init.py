@@ -3,6 +3,7 @@ import os, cert
 # PREPARE DIRECTORIES
 if not os.path.exists("pki"): os.mkdir("pki")
 if not os.path.exists("ids"): os.mkdir("ids")
+if not os.path.exists("comms"): os.mkdir("comms")
 
 # CREATE CERTIFICATES
 cert_ca, sk_ca = cert.create_ca("PrecePt CA")

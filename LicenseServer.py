@@ -51,7 +51,15 @@ while True:
         
         # SEND (T_LS || r || {Sig_LS( H(r || T-LS || T_U) || PK_U(License) || ContentID ) || Cert_LS}_K) 
         # to LicenseAgent
-
+        temp_sk = ec.generate_private_key(ec.SECP384R1())   # r_LS
+        temp_pk = temp_sk.public_key()                      # T_LS
+        nonce = os.urandom(12)                              # r
+        
+        shared = temp_sk.exchange(ec.ECDH, temp_pk_user)
+        digest = hashes.Hash(hashes.SHA256())
+        digest.update(shared + nonce)
+        k = digest.finalize()                               # K
+        
         # RECEIVE ({Sig_U( H(T_U || T_LS || License) || token )}_K)
         
     except FileNotFoundError:
