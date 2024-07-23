@@ -1,5 +1,3 @@
-from cryptography.hazmat.primitives.asymmetric import ec
-from cryptography.hazmat.primitives import serialization
 import os, cert
 
 # PREPARE DIRECTORIES
