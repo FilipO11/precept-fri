@@ -1,6 +1,7 @@
 # IMPORTS
 import os
 import time
+from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec, padding
 
@@ -11,17 +12,14 @@ def xor_bytes(s1, s2):
 
     return bytes(res)
 
-# LOAD KEYS and CERT
-with open("keys/LS_private_key.key", "rb") as h:
-    LS_serialized_private = h.read()
-LS_private_key = serialization.load_pem_private_key(
-    LS_serialized_private,
-    password=b'preceptFRI',
-)
+# LOAD KEYS and CERTS
+with open("pki/sk_ls.pem", "rb") as h:
+    sk_ls_ser = h.read()
+sk_ls = serialization.load_pem_private_key(sk_ls_ser)
 
-with open("keys/LS_public_key.key", "rb") as h:
-    LS_serialized_public = h.read()
-LS_public_key = serialization.load_pem_public_key(LS_serialized_public,)
+with open("pki/cert_user.pem", "rb") as c:
+    pem_data = c.read()
+cert_user = x509.load_pem_x509_certificate(pem_data)
 
 # LISTEN FOR LICENSE REQUESTS
 while True:
@@ -32,7 +30,7 @@ while True:
         os.remove("comms/ls.msg")
         tid_enc, contentid = msg[:64], msg[64:]
         
-        tid = LS_private_key.decrypt(
+        tid = sk_ls.decrypt(
             ciphertext = tid_enc,
             padding = padding.OAEP(
                 mgf = padding.MGF1(algorithm=hashes.SHA256()),
@@ -40,7 +38,7 @@ while True:
             )
         )
         
-        LA_public_key = ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP384R1, tid[:32])
+        temp_pk_user = ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP384R1, tid[:32])
         
         did = xor_bytes(tid[:32], tid[32:])
         
