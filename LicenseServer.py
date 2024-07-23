@@ -21,10 +21,13 @@ with open("pki/cert_user.pem", "rb") as c:
     pem_data = c.read()
 cert_user = x509.load_pem_x509_certificate(pem_data)
 
+with open("ids/LS_ID.id", "rb") as c:
+    lsid = c.read()
+
 # LISTEN FOR LICENSE REQUESTS
 while True:
     try:
-        # 1. RECEIVE (TID || ContentID)
+        # RECEIVE (TID || ContentID)
         with open("comms/ls.msg", "rb") as h:
             msg = h.read()
         os.remove("comms/ls.msg")
@@ -60,6 +63,12 @@ while True:
         digest.update(shared + nonce)
         k = digest.finalize()                               # K
         
+        digest.update(nonce + temp_pk + temp_pk_user)
+        signed_hash = temp_sk.sign(digest.finalize(), ec.ECDSA)
+        
+        digest.update(did + lsid)
+        kid = digest.finalize()
+                     
         # RECEIVE ({Sig_U( H(T_U || T_LS || License) || token )}_K)
         
     except FileNotFoundError:
