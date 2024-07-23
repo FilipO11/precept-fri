@@ -26,7 +26,14 @@ with open("ids/Content_ID.id", "wb") as h:
     h.write(os.urandom(32))
 with open("ids/LS_ID.id", "wb") as h: 
     h.write(os.urandom(32))
-with open("ids/D_ID.id", "wb") as h: 
-    h.write(os.urandom(32))
 with open("ids/CH_ID.id", "wb") as h: 
     h.write(os.urandom(32))
+with open("ids/D_ID.id", "wb") as h:
+    did = os.urandom(32)
+    h.write(did)
+
+# GENERATE DEVICE DB
+with open("DeviceDB.db", "wb") as db:
+    db.write(did)
+    for i in range(100):
+        db.write(os.urandom(32))

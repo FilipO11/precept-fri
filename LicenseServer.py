@@ -43,9 +43,18 @@ while True:
         
         did = xor_bytes(tid[:32], tid[32:])
         
-        # 2. SEND (T_LS || r || {Sig_LS( H(r || T-LS || T_U) || PK_U(License) || ContentID ) || Cert_LS}_K) to LicenseAgent
+        # CHECK DID
+        with open("DeviceDB.db", "rb") as h:
+            db = h.read()
+        if not(did in db):
+            print("ERROR: Device not registered!")
+            exit(1)
+        
+        # SEND (T_LS || r || {Sig_LS( H(r || T-LS || T_U) || PK_U(License) || ContentID ) || Cert_LS}_K) 
+        # to LicenseAgent
 
-        # 3. RECEIVE ({Sig_U( H(T_U || T_LS || License) || token )}_K)
+        # RECEIVE ({Sig_U( H(T_U || T_LS || License) || token )}_K)
         
     except FileNotFoundError:
+        # time.sleep(2)
         continue
