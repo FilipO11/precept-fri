@@ -1,5 +1,6 @@
 # IMPORTS
 import os
+import time
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec, padding
 
@@ -56,5 +57,5 @@ while True:
         # RECEIVE ({Sig_U( H(T_U || T_LS || License) || token )}_K)
         
     except FileNotFoundError:
-        # time.sleep(2)
+        time.sleep(2)
         continue
