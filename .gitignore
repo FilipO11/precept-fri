@@ -1,3 +1,5 @@
 ids/*
 keys/*
+pki/*
+__pycache__/*
 DeviceDB.db
