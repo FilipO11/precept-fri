@@ -1,5 +1,7 @@
+__pycache__/*
 ids/*
 keys/*
 pki/*
-__pycache__/*
+comms/*
+*.prp
 DeviceDB.db

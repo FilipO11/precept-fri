@@ -103,7 +103,7 @@ while True:
         with open("comms/la.msg", "wb") as h:
             h.write(response)
                      
-        # RECEIVE ({Sig_U( H(T_U || T_LS || License) || token )}_K)
+        # RECEIVE ({Sig_U( H(T_U || T_LS || License) || token )}_K), if successful INCREASE SN
         
     except FileNotFoundError:
         time.sleep(2)
