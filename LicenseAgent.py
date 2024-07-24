@@ -1,5 +1,7 @@
+import os
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.asymmetric import ec, padding
 
 def xor_bytes(s1, s2):
@@ -12,7 +14,7 @@ def xor_bytes(s1, s2):
 def acquire_license():
     # 1. SEND (TID || ContentID) to LicenseServer
     # 1.1 Compute T_U from private key r_U via ECDH
-    temp_sk = ec.generate_private_key(ec.SECP384R1())
+    temp_sk = ec.generate_private_key(ec.SECP256R1())
     temp_pk = temp_sk.public_key()
     
     with open("pki/cert_ls.pem", "rb") as c:
@@ -41,7 +43,23 @@ def acquire_license():
         h.write(tid + contentid)
 
     # 2. RECEIVE (T_LS || r || {Sig_LS( H(r || T-LS || T_U) || PK_U(License) || ContentID ) || Cert_LS}_K)
-
+    with open("comms/la.msg", "rb") as h:
+        msg = h.read()
+    os.remove("comms/la.msg")
+    temp_pk_ls, nonce, sym_ct = msg[:32], msg[32:64], msg[64:]
+    
+    shared = temp_sk.exchange(ec.ECDH, temp_pk_ls)
+    digest = hashes.Hash(hashes.SHA256())
+    digest.update(shared + nonce)
+    k = digest.finalize()
+    
+    # decrypt aesgcm
+    aesgcm = AESGCM(k)
+    sym_pt = aesgcm.decrypt(nonce, sym_ct, None)
+    
+    # verify sig via cert_ls
+        
+    # verify exc hash
 
     # 3. SEND ({Sig_U( H(T_U || T_LS || License) || token )}_K)
 

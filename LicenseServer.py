@@ -49,7 +49,7 @@ while True:
             )
         )
         
-        temp_pk_user = ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP384R1, tid[:32])
+        temp_pk_user = ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256R1, tid[:32])
         
         did = xor_bytes(tid[:32], tid[32:])
         
@@ -62,7 +62,7 @@ while True:
         
         # SEND (T_LS || r || {Sig_LS( H(r || T-LS || T_U) || PK_U(License) || ContentID ) || Cert_LS}_K) 
         # to LicenseAgent
-        temp_sk = ec.generate_private_key(ec.SECP384R1())   # r_LS
+        temp_sk = ec.generate_private_key(ec.SECP256R1())   # r_LS
         temp_pk = temp_sk.public_key()                      # T_LS
         nonce = os.urandom(32)                              # r
         
@@ -98,7 +98,7 @@ while True:
         aesgcm = AESGCM(k)
         sym_pt = sk_ls.sign(exchange_hash + lic_enc + contentid, ec.ECDSA) + cert_ls_pem
         
-        response = temp_pk + nonce + aesgcm.encrypt(nonce, sym_pt, None)
+        response = temp_pk.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo) + nonce + aesgcm.encrypt(nonce, sym_pt, None)
         
         with open("comms/la.msg", "wb") as h:
             h.write(response)
