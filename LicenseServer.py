@@ -1,4 +1,5 @@
 # IMPORTS
+import datetime
 import os
 import time
 from cryptography import x509
@@ -12,7 +13,7 @@ def xor_bytes(s1, s2):
 
     return bytes(res)
 
-# LOAD KEYS and CERTS
+# LOAD FROM FILES
 with open("pki/sk_ls.pem", "rb") as h:
     sk_ls_ser = h.read()
 sk_ls = serialization.load_pem_private_key(sk_ls_ser)
@@ -23,6 +24,9 @@ cert_user = x509.load_pem_x509_certificate(pem_data)
 
 with open("ids/LS_ID.id", "rb") as c:
     lsid = c.read()
+    
+with open("sn.prp", "rb") as r:
+    sn = int.from_bytes(r.read())
 
 # LISTEN FOR LICENSE REQUESTS
 while True:
@@ -68,6 +72,15 @@ while True:
         
         digest.update(did + lsid)
         kid = digest.finalize()
+        
+        with open("rules.prp", "rb") as r:
+            rule = r.read()                                 # Usagerule; for showcase purposes
+        
+        date = datetime.datetime.now(datetime.UTC)
+        
+        license = sn.to_bytes(32, "big") + date + rule
+        digest.update(license)
+        license += temp_sk.sign(digest.finalize(), ec.ECDSA)
                      
         # RECEIVE ({Sig_U( H(T_U || T_LS || License) || token )}_K)
         
