@@ -4,6 +4,7 @@ import os
 import time
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.asymmetric import ec, padding
 
 def xor_bytes(s1, s2):
@@ -15,12 +16,15 @@ def xor_bytes(s1, s2):
 
 # LOAD FROM FILES
 with open("pki/sk_ls.pem", "rb") as h:
-    sk_ls_ser = h.read()
-sk_ls = serialization.load_pem_private_key(sk_ls_ser)
+    pem_data = h.read()
+sk_ls = serialization.load_pem_private_key(pem_data)
 
 with open("pki/cert_user.pem", "rb") as c:
     pem_data = c.read()
 cert_user = x509.load_pem_x509_certificate(pem_data)
+
+with open("pki/cert_ls.pem", "rb") as c:
+    cert_ls_pem = c.read()
 
 with open("ids/LS_ID.id", "rb") as c:
     lsid = c.read()
@@ -60,7 +64,7 @@ while True:
         # to LicenseAgent
         temp_sk = ec.generate_private_key(ec.SECP384R1())   # r_LS
         temp_pk = temp_sk.public_key()                      # T_LS
-        nonce = os.urandom(12)                              # r
+        nonce = os.urandom(32)                              # r
         
         shared = temp_sk.exchange(ec.ECDH, temp_pk_user)
         digest = hashes.Hash(hashes.SHA256())
@@ -68,7 +72,7 @@ while True:
         k = digest.finalize()                               # K
         
         digest.update(nonce + temp_pk + temp_pk_user)
-        signed_hash = temp_sk.sign(digest.finalize(), ec.ECDSA)
+        exchange_hash = digest.finalize()
         
         digest.update(did + lsid)
         kid = digest.finalize()
@@ -78,9 +82,26 @@ while True:
         
         date = datetime.datetime.now(datetime.UTC)
         
-        license = sn.to_bytes(32, "big") + date + rule
+        other_data = bytes(32)
+        
+        license = sn.to_bytes(32, "big") + date + rule + other_data
         digest.update(license)
-        license += temp_sk.sign(digest.finalize(), ec.ECDSA)
+        license += sk_ls.sign(digest.finalize(), ec.ECDSA)
+        lic_enc = cert_user.public_key().encrypt(
+            plaintext = license,
+            padding = padding.OAEP(
+                mgf = padding.MGF1(algorithm=hashes.SHA256()),
+                algorithm = hashes.SHA256(),
+            )
+        )
+        
+        aesgcm = AESGCM(k)
+        sym_pt = sk_ls.sign(exchange_hash + lic_enc + contentid, ec.ECDSA) + cert_ls_pem
+        
+        response = temp_pk + nonce + aesgcm.encrypt(nonce, sym_pt, None)
+        
+        with open("comms/la.msg", "wb") as h:
+            h.write(response)
                      
         # RECEIVE ({Sig_U( H(T_U || T_LS || License) || token )}_K)
         
