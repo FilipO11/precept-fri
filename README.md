@@ -3,7 +3,7 @@ FRI diploma assignment
 
 locally simulated implementation of PrecePt license management protocol
 
-run init.py to prepare environment
+run init.py to prepare test environment
 
 ## Notes:
 - server currently issues the license WITHOUT asymetrically encrypting it due to the limitations of the current implementation (RSA plaintext size)

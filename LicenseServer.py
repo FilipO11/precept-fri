@@ -35,7 +35,7 @@ with open("DeviceDB.db", "rb") as h:
     db = h.read()
         
 with open("rules.prp", "rb") as r:
-    rule = r.read()                                 # Usagerule; for showcase purposes
+    rule = r.read()
 
 
 # LISTEN FOR LICENSE REQUESTS
@@ -57,14 +57,8 @@ while True:
             )
         )
         
-        # print("tid: \n", tid.hex())
-        
         temp_pk_user = serialization.load_pem_public_key(tid[:174])
-        # print("xor: \n", tid[174:].hex())
-        
         did = xor_bytes(tid[:174], tid[174:])
-        
-        # print("did: \n", did.hex())
         did = did[:32]
         
         # CHECK DID
@@ -72,11 +66,10 @@ while True:
             print("ERROR: Device not registered!")
             exit(1)
         
-        # SEND (T_LS || r || {Sig_LS( H(r || T-LS || T_U) || PK_U(License) || ContentID ) || Cert_LS}_K) 
-        # to LicenseAgent
-        temp_sk = ec.generate_private_key(ec.SECP256K1())   # r_LS
-        temp_pk = temp_sk.public_key()                      # T_LS
-        nonce = os.urandom(32)                              # r
+        # SEND (T_LS || r || {Sig_LS( H(r || T-LS || T_U) || PK_U(License) || ContentID ) || Cert_LS}_K)
+        temp_sk = ec.generate_private_key(ec.SECP256K1())
+        temp_pk = temp_sk.public_key()
+        nonce = os.urandom(32)
         
         shared = temp_sk.exchange(ec.ECDH(), temp_pk_user)
         digest = hashes.Hash(hashes.SHA256())
@@ -98,14 +91,7 @@ while True:
         
         other_data = bytes(32)
         
-        # print("sn: ", len(sn.to_bytes(32, "big")))
-        # print("date: ", len(date))
-        # print("rule: ", len(rule))
-        # print("other_date: ", len(other_data))
-        
         license = sn.to_bytes(8, "big") + date + rule + other_data
-        # digest = hashes.Hash(hashes.SHA256())
-        # digest.update(license)
         sig_lic = sk_ls.sign(
             license, 
             padding.PSS(
@@ -114,18 +100,10 @@ while True:
             ),
             hashes.SHA256()
         )
-        # print("lic: ", len(license))
         license += sig_lic
-        # print("sig: ", len(sig_lic))
-        # print("full: ", len(license))
-        # print("key: ", sk_ls.key_size)
         
         f = Fernet(k)
         pt = exchange_hash + license + contentid + cert_ls_pem
-        
-        # print("lic: ", len(temp_pk.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)))
-        # print("sig: ", len(sig_lic))
-        # print("full: ", len(license + sig_lic))
                 
         response = temp_pk.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo) + nonce + f.encrypt(pt)
         

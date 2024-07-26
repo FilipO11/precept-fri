@@ -18,29 +18,18 @@ def acquire_license():
     sk_user = serialization.load_pem_private_key(pem_data, None)
     with open("ids/D_ID.id", "rb") as h:
         did = h.read()
-    # print("did: \n", did.hex())
     with open("pki/cert_ls.pem", "rb") as c:
         pem_data = c.read()
     cert_ls = x509.load_pem_x509_certificate(pem_data)    
     
     print("Computing request...")
     
-    # 1. SEND (TID || ContentID) to LicenseServer
-    # 1.1 Compute T_U from private key r_U via ECDH
+    # SEND (TID || ContentID) to LicenseServer
     temp_sk = ec.generate_private_key(ec.SECP256K1())
     temp_pk = temp_sk.public_key()
     temp_pk_pem = temp_pk.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
     did = did + bytes(142)
-    # print("didpadded: \n", did.hex())
-    # print("temppkpem: \n", temp_pk_pem.hex())
-    # print("temppkpem len: \n", len(temp_pk_pem))
-    # print("xor: \n", xor_bytes(temp_pk_pem, did).hex())
-    # print("tiddec: \n", (temp_pk_pem + xor_bytes(temp_pk_pem, did)).hex())
-    # print("pkpem: ", sys.getsizeof(temp_pk_pem))
-    # print("did: ", sys.getsizeof(did))
-    # print("tid: ", sys.getsizeof(xor_bytes(temp_pk_pem, did)))
-        
-    # 1.2 Compute TID
+
     print("pt: ", len(temp_pk_pem + xor_bytes(temp_pk_pem, did)))
     tid = cert_ls.public_key().encrypt(
         plaintext = temp_pk_pem + xor_bytes(temp_pk_pem, did),
@@ -51,19 +40,15 @@ def acquire_license():
         )
     )
     
-    # print("tid: \n", tid.hex())
-    
-    # 1.3 Get ContentID
     with open("ids/Content_ID.id", "rb") as h:
         contentid = h.read()
     
-    # 1.3 Send license request
     with open("comms/ls.msg", "wb") as h:
         h.write(contentid + tid)
     
     print("Request sent.\nWaiting for response...")
 
-    # 2. RECEIVE (T_LS || r || {Sig_LS( H(r || T-LS || T_U) || PK_U(License) || ContentID ) || Cert_LS}_K)
+    # RECEIVE (T_LS || r || {Sig_LS( H(r || T-LS || T_U) || PK_U(License) || ContentID ) || Cert_LS}_K)
     response = None
     while response == None:
         try:
@@ -83,7 +68,6 @@ def acquire_license():
     digest.update(shared + nonce)
     k = base64.urlsafe_b64encode(digest.finalize())
     
-    # decrypt fernet
     f = Fernet(k)
     sym_pt = f.decrypt(sym_ct)
     exchange_hash, license = sym_pt[:32], sym_pt[32:598]
@@ -105,7 +89,6 @@ def acquire_license():
         print("ERROR: Invalid license signature.")
         exit(1)
     
-    # verify exc hash
     digest = hashes.Hash(hashes.SHA256())
     digest.update(nonce 
                   + temp_pk_ls.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
@@ -117,7 +100,7 @@ def acquire_license():
         print("ERROR: Invalid exchange hash.")
         exit(1)
     
-    # 3. SEND ({Sig_U( H(T_U || T_LS || License) || token )}_K)
+    # SEND ({Sig_U( H(T_U || T_LS || License) || token )}_K)
     digest = hashes.Hash(hashes.SHA256())
     digest.update(did + license)
     token = digest.finalize()
@@ -144,7 +127,7 @@ def acquire_license():
         h.write(license)
     
 try:
-    with open("comms/la.msg", "rb") as h:
+    with open("lic.prp", "rb") as h:
         response = h.read()
 except FileNotFoundError:
     print("No license found.\nIssuing request.")
