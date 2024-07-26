@@ -3,11 +3,11 @@ import os, cert
 # INITIALIZE SERIAL NUMBER RECORD
 sn = 0
 with open("sn.prp", "wb") as r:
-    r.write(sn.to_bytes(32, "big"))
+    r.write(sn.to_bytes(8, "big"))
 
 # CREATE RULES FILE
 with open("rules.prp", "wb") as h: 
-    h.write(os.urandom(32))
+    h.write(os.urandom(8))
 
 # PREPARE DIRECTORIES
 if not os.path.exists("pki"): os.mkdir("pki")

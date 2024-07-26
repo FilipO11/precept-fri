@@ -1,13 +1,13 @@
 from cryptography import x509
 from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import hashes
 import datetime
 
 def create_ca(common_name: str):
     """Ustvari samopodpisan certifikat CA ter pripadajoč zasebni ključ."""
     # Ustvarimo zasebni ključ CA
-    private_key_ca = ec.generate_private_key(ec.SECP384R1())
+    private_key_ca = rsa.generate_private_key(public_exponent=65537, key_size=4096)
 
     # Nastavimo ime CA
     x509_common_name = x509.NameAttribute(x509.NameOID.COMMON_NAME, common_name)
@@ -34,7 +34,7 @@ def create_csr(common_name: str):
     """Ustvari certifikatni zahtevek (angl. certificate signing requrest)
     in pripadajoč zasebni ključ."""
     # Ustvarimo zasebni ključ
-    private_key_csr = ec.generate_private_key(ec.SECP384R1())
+    private_key_csr = rsa.generate_private_key(public_exponent=65537, key_size=4096)
 
     # Pripravimo pomožni objekt za izgradnjo certifikatnega zahtevka
     builder = x509.CertificateSigningRequestBuilder()

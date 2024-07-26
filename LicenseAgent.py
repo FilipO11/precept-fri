@@ -1,8 +1,8 @@
-import os
+import os, sys, time, base64
 from cryptography import x509
+from cryptography.fernet import Fernet
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.asymmetric import ec, padding
 
 def xor_bytes(s1, s2):
@@ -15,27 +15,43 @@ def xor_bytes(s1, s2):
 def acquire_license():
     with open("pki/sk_user.pem", "rb") as h:
         pem_data = h.read()
-    sk_user = serialization.load_pem_private_key(pem_data)
+    sk_user = serialization.load_pem_private_key(pem_data, None)
     with open("ids/D_ID.id", "rb") as h:
         did = h.read()
+    # print("did: \n", did.hex())
     with open("pki/cert_ls.pem", "rb") as c:
         pem_data = c.read()
     cert_ls = x509.load_pem_x509_certificate(pem_data)    
+    
+    print("Computing request...")
     
     # 1. SEND (TID || ContentID) to LicenseServer
     # 1.1 Compute T_U from private key r_U via ECDH
     temp_sk = ec.generate_private_key(ec.SECP256K1())
     temp_pk = temp_sk.public_key()
+    temp_pk_pem = temp_pk.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
+    did = did + bytes(142)
+    # print("didpadded: \n", did.hex())
+    # print("temppkpem: \n", temp_pk_pem.hex())
+    # print("temppkpem len: \n", len(temp_pk_pem))
+    # print("xor: \n", xor_bytes(temp_pk_pem, did).hex())
+    # print("tiddec: \n", (temp_pk_pem + xor_bytes(temp_pk_pem, did)).hex())
+    # print("pkpem: ", sys.getsizeof(temp_pk_pem))
+    # print("did: ", sys.getsizeof(did))
+    # print("tid: ", sys.getsizeof(xor_bytes(temp_pk_pem, did)))
         
     # 1.2 Compute TID
+    print("pt: ", len(temp_pk_pem + xor_bytes(temp_pk_pem, did)))
     tid = cert_ls.public_key().encrypt(
-        plaintext = temp_pk.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo) 
-                    + xor_bytes(temp_pk.public_bytes(), did),
+        plaintext = temp_pk_pem + xor_bytes(temp_pk_pem, did),
         padding = padding.OAEP(
             mgf = padding.MGF1(algorithm=hashes.SHA256()),
             algorithm = hashes.SHA256(),
+            label=None
         )
     )
+    
+    # print("tid: \n", tid.hex())
     
     # 1.3 Get ContentID
     with open("ids/Content_ID.id", "rb") as h:
@@ -43,49 +59,94 @@ def acquire_license():
     
     # 1.3 Send license request
     with open("comms/ls.msg", "wb") as h:
-        h.write(tid + contentid)
+        h.write(contentid + tid)
+    
+    print("Request sent.\nWaiting for response...")
 
     # 2. RECEIVE (T_LS || r || {Sig_LS( H(r || T-LS || T_U) || PK_U(License) || ContentID ) || Cert_LS}_K)
-    with open("comms/la.msg", "rb") as h:
-        msg = h.read()
+    response = None
+    while response == None:
+        try:
+            with open("comms/la.msg", "rb") as h:
+                response = h.read()
+        except FileNotFoundError:
+            time.sleep(1)
+            continue
     os.remove("comms/la.msg")
-    temp_pk_ls, nonce, sym_ct = msg[:32], msg[32:64], msg[64:]
+    print("Response received.\nProcessing response...")
+    temp_pk_ls, nonce, sym_ct = response[:174], response[174:206], response[206:]
     
-    temp_pk_ls = ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256K1, temp_pk_ls)
+    temp_pk_ls = serialization.load_pem_public_key(temp_pk_ls)
     
-    shared = temp_sk.exchange(ec.ECDH, temp_pk_ls)
+    shared = temp_sk.exchange(ec.ECDH(), temp_pk_ls)
     digest = hashes.Hash(hashes.SHA256())
     digest.update(shared + nonce)
-    k = digest.finalize()
+    k = base64.urlsafe_b64encode(digest.finalize())
     
-    # decrypt aesgcm
-    aesgcm = AESGCM(k)
-    sym_pt = aesgcm.decrypt(nonce, sym_ct, None)
-    sig, lic_enc = sym_pt[:64], sym_pt[64:]
+    # decrypt fernet
+    f = Fernet(k)
+    sym_pt = f.decrypt(sym_ct)
+    exchange_hash, license = sym_pt[:32], sym_pt[32:598]
     
-    license = sk_user.decrypt(
-        ciphertext = lic_enc,
-        padding = padding.OAEP(
-            mgf = padding.MGF1(algorithm=hashes.SHA256()),
-            algorithm = hashes.SHA256(),
-        )
-    )
-    #TODO: verify license signature
-    
-    digest.update(nonce + temp_pk_ls + temp_pk)
-    exchange_hash = digest.finalize()
-    
-    # verify sig via cert_ls
     try:
+        print("Checking license signature...")
+        lic_sig = license[54:]
         cert_ls.public_key().verify(
-            sig,
-            exchange_hash + lic_enc + contentid,
-            ec.ECDSA
+            lic_sig,
+            license[:54],
+            padding.PSS(
+                mgf=padding.MGF1(hashes.SHA256()),
+                salt_length=padding.PSS.MAX_LENGTH
+            ),
+            hashes.SHA256()
         )
+        print("Signature verified.\nComputing confirmation...")
     except InvalidSignature:
-        print("ERROR: Invalid license server response signature.")
+        print("ERROR: Invalid license signature.")
         exit(1)
-    # verify exc hash (SKIP FOR NOW)
+    
+    # verify exc hash
+    digest = hashes.Hash(hashes.SHA256())
+    digest.update(nonce 
+                  + temp_pk_ls.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
+                  + temp_pk.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
+                  )
+    check_exchange_hash = digest.finalize()
+    
+    if exchange_hash != check_exchange_hash:
+        print("ERROR: Invalid exchange hash.")
+        exit(1)
     
     # 3. SEND ({Sig_U( H(T_U || T_LS || License) || token )}_K)
-
+    digest = hashes.Hash(hashes.SHA256())
+    digest.update(did + license)
+    token = digest.finalize()
+    
+    confirmation_hash = sk_user.sign(
+        temp_pk.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo) 
+        + temp_pk_ls.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
+        + license, 
+        padding.PSS(
+            mgf=padding.MGF1(hashes.SHA256()),
+            salt_length=padding.PSS.MAX_LENGTH
+        ),
+        hashes.SHA256()
+    )
+    
+    print("hash: ", len(confirmation_hash))
+    print("token: ", len(token))
+    confirm_license = f.encrypt(confirmation_hash + token)
+    
+    with open("comms/ls.msg", "wb") as h:
+        h.write(confirm_license)
+    
+    with open("lic.prp", "wb") as h:
+        h.write(license)
+    
+try:
+    with open("comms/la.msg", "rb") as h:
+        response = h.read()
+except FileNotFoundError:
+    print("No license found.\nIssuing request.")
+    acquire_license()
+print("License acquired.\nProceeding in idle mode.")
