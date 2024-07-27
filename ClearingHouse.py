@@ -37,12 +37,109 @@ with open("DeviceDB.db", "rb") as h:
 with open("rules.prp", "rb") as r:
     rule = r.read()
     
-while True:
+token = None
+while token == None:
+    # WAIT FOR DEVICE TO BE REGISTERED
     try:
         with open("token.prp", "rb") as h:
             token = h.read()
     except FileNotFoundError:
         time.sleep(2)
         continue
-    time.sleep(1)
-    print("New license registered. Beginning monitoring.")
+
+time.sleep(1)
+
+while True:
+    print("Registered licenses detected.\nRequesting usage data...")
+    
+    # SEND USAGE DATA REQUEST
+    temp_sk = ec.generate_private_key(ec.SECP256K1())
+    temp_pk = temp_sk.public_key()
+    
+    request = (token 
+                + chid 
+                + temp_pk.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
+                )
+    
+    request = cert_user.public_key().encrypt(
+        plaintext = request,
+        padding = padding.OAEP(
+            mgf = padding.MGF1(algorithm=hashes.SHA256()),
+            algorithm = hashes.SHA256(),
+            label=None
+        )
+    )
+    
+    with open("comms/la.msg", "wb") as h:
+        h.write(request)
+    
+    print("Usage data request sent.\nWaiting for data...")
+    
+    response = None
+    while response == None:
+        try:
+            with open("comms/ch.msg", "rb") as h:
+                response = h.read()
+        except FileNotFoundError:
+            time.sleep(2)
+            continue
+    os.remove("comms/ch.msg")
+    print("Data received.\nCalculating confirmation...")
+    
+    temp_pk_user, nonce, sym_ct = response[:174], response[174:206], response[206:]
+    temp_pk_user = serialization.load_pem_public_key(temp_pk_user)
+    
+    shared = temp_sk.exchange(ec.ECDH(), temp_pk_user)
+    digest = hashes.Hash(hashes.SHA256())
+    digest.update(shared + nonce)
+    k = base64.urlsafe_b64encode(digest.finalize())
+    
+    f = Fernet(k)
+    sym_pt = f.decrypt(sym_ct)
+    
+    exchange_hash, usedata = sym_pt[:32], sym_pt[32:544]
+    
+    digest = hashes.Hash(hashes.SHA256())
+    digest.update(temp_pk.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
+                  + temp_pk_user.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
+                  + nonce
+                  )
+    
+    if exchange_hash != digest.finalize():
+        print("ERROR: Invalid exchange hash.")
+        exit(1) # SHOULD BE CONTINUE OR SOMETHING
+    
+    usedata = sk_ch.decrypt(
+        ciphertext = usedata,
+        padding = padding.OAEP(
+            mgf = padding.MGF1(algorithm=hashes.SHA256()),
+            algorithm = hashes.SHA256(),
+            label=None
+        )
+    )
+    
+    digest = hashes.Hash(hashes.SHA256())
+    digest.update(temp_pk.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
+                  + temp_pk_user.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
+                  + k
+                  + usedata
+                  )
+    confirmation_hash = digest.finalize()
+    
+    sig = sk_ch.sign(
+        confirmation_hash, 
+        padding.PSS(
+            mgf=padding.MGF1(hashes.SHA256()),
+            salt_length=padding.PSS.MAX_LENGTH
+        ),
+        hashes.SHA256()
+    )
+    
+    confirmation = f.encrypt(confirmation_hash + sig)
+    
+    with open("comms/la.msg", "wb") as h:
+        h.write(confirmation)
+    
+    print("Confirmation sent.\nStarting next cycle...")
+    time.sleep(5)
+    
