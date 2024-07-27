@@ -37,7 +37,6 @@ with open("DeviceDB.db", "rb") as h:
 with open("rules.prp", "rb") as r:
     rule = r.read()
 
-
 # LISTEN FOR LICENSE REQUESTS
 while True:
     try:
