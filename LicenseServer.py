@@ -34,15 +34,10 @@ def receive_message(sock):
     message = None
     if message_length > 0:
         message = receive_fixed_length_msg(sock, message_length)
-        # message = message.decode("utf-8")
 
     return message
 
 def send_message(sock, message):
-    # encoded_message = message.encode("utf-8")
-
-    # ustvari glavo v prvih 2 bytih je dolzina sporocila (HEADER_LENGTH)
-    # metoda pack "!H" : !=network byte order, H=unsigned short
     header = struct.pack("!H", len(message))
 
     message = header + message
@@ -116,21 +111,10 @@ def client_thread(client_sock, client_addr):
             
     response = temp_pk.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo) + nonce + f.encrypt(pt)
     
-    # with open("comms/la.msg", "wb") as h:
-    #     h.write(response)
     send_message(client_sock, response)
     print("Issued license to " + client_addr[0] + ":" + str(client_addr[1])+".\nWaiting for confirmation...")
     
     # RECEIVE ({Sig_U( H(T_U || T_LS || License) || token )}_K), if successful INCREASE SN
-    # confirmation = None
-    # while confirmation == None:
-    #     try:
-    #         with open("comms/ls.msg", "rb") as h:
-    #             confirmation = h.read()
-    #     except FileNotFoundError:
-    #         time.sleep(1)
-    #         continue
-    # os.remove("comms/ls.msg")
     confirmation = receive_message(client_sock)
     print("Confirmation received.")
     pt = f.decrypt(confirmation, None)
