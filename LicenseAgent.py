@@ -1,9 +1,15 @@
-import os, sys, time, base64
+import os, time, base64, socket, struct
 from cryptography import x509
 from cryptography.fernet import Fernet
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec, padding
+
+LICENSESERVER = "localhost"
+CLEARINGHOUSE = "localhost"
+PORT = 50000
+CHPORT = 50001
+HEADER_LENGTH = 2
 
 def xor_bytes(s1, s2):
     res = []
@@ -11,6 +17,38 @@ def xor_bytes(s1, s2):
         res.append(s1[i] ^ s2[i])
 
     return bytes(res)
+
+def receive_fixed_length_msg(sock, msglen):
+    message = b''
+    while len(message) < msglen:
+        chunk = sock.recv(msglen - len(message))
+        if chunk == b'':
+            raise RuntimeError("socket connection broken")
+        message = message + chunk
+
+    return message
+
+def receive_message(sock):
+    header = receive_fixed_length_msg(sock,
+                                      HEADER_LENGTH)
+    message_length = struct.unpack("!H", header)[0]
+
+    message = None
+    if message_length > 0:
+        message = receive_fixed_length_msg(sock, message_length)
+        # message = message.decode("utf-8")
+
+    return message
+
+def send_message(sock, message):
+    # encoded_message = message.encode("utf-8")
+
+    # ustvari glavo v prvih 2 bytih je dolzina sporocila (HEADER_LENGTH)
+    # metoda pack "!H" : !=network byte order, H=unsigned short
+    header = struct.pack("!H", len(message))
+
+    message = header + message
+    sock.sendall(message)
 
 def acquire_license():
     with open("pki/sk_user.pem", "rb") as h:
@@ -20,8 +58,11 @@ def acquire_license():
         did = h.read()
     with open("pki/cert_ls.pem", "rb") as c:
         pem_data = c.read()
-    cert_ls = x509.load_pem_x509_certificate(pem_data)    
+    cert_ls = x509.load_pem_x509_certificate(pem_data)
     
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.connect((LICENSESERVER, PORT))
+    print("Connected to license server " + LICENSESERVER + ":" + str(PORT))
     print("Computing request...")
     
     # SEND (TID || ContentID) to LicenseServer
@@ -42,21 +83,23 @@ def acquire_license():
     with open("ids/Content_ID.id", "rb") as h:
         contentid = h.read()
     
-    with open("comms/ls.msg", "wb") as h:
-        h.write(contentid + tid)
-    
+    # with open("comms/ls.msg", "wb") as h:
+    #     h.write(contentid + tid)
+
+    send_message(sock, contentid + tid)    
     print("Request sent.\nWaiting for response...")
 
     # RECEIVE (T_LS || r || {Sig_LS( H(r || T-LS || T_U) || PK_U(License) || ContentID ) || Cert_LS}_K)
-    response = None
-    while response == None:
-        try:
-            with open("comms/la.msg", "rb") as h:
-                response = h.read()
-        except FileNotFoundError:
-            time.sleep(1)
-            continue
-    os.remove("comms/la.msg")
+    # response = None
+    # while response == None:
+    #     try:
+    #         with open("comms/la.msg", "rb") as h:
+    #             response = h.read()
+    #     except FileNotFoundError:
+    #         time.sleep(1)
+    #         continue
+    # os.remove("comms/la.msg")
+    response = receive_message(sock)
     print("Response received.\nProcessing response...")
     temp_pk_ls, nonce, sym_ct = response[:174], response[174:206], response[206:]
     
@@ -119,8 +162,9 @@ def acquire_license():
     print("token: ", len(token))
     confirm_license = f.encrypt(confirmation_hash + token)
     
-    with open("comms/ls.msg", "wb") as h:
-        h.write(confirm_license)
+    # with open("comms/ls.msg", "wb") as h:
+    #     h.write(confirm_license)
+    send_message(sock, confirm_license)
     
     with open("lic.prp", "wb") as h:
         h.write(license)

@@ -1,10 +1,13 @@
 # IMPORTS
-import datetime, os, time, base64, threading
+import datetime, os, time, base64, threading, socket, struct
 from cryptography import x509
 from cryptography.fernet import Fernet
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec, padding
+
+PORT = 50000
+HEADER_LENGTH = 2
 
 def xor_bytes(s1, s2):
     res = []
@@ -13,7 +16,45 @@ def xor_bytes(s1, s2):
 
     return bytes(res)
 
-def client_thread(msg):
+def receive_fixed_length_msg(sock, msglen):
+    message = b''
+    while len(message) < msglen:
+        chunk = sock.recv(msglen - len(message))
+        if chunk == b'':
+            raise RuntimeError("socket connection broken")
+        message = message + chunk
+
+    return message
+
+def receive_message(sock):
+    header = receive_fixed_length_msg(sock,
+                                      HEADER_LENGTH)
+    message_length = struct.unpack("!H", header)[0]
+
+    message = None
+    if message_length > 0:
+        message = receive_fixed_length_msg(sock, message_length)
+        # message = message.decode("utf-8")
+
+    return message
+
+def send_message(sock, message):
+    # encoded_message = message.encode("utf-8")
+
+    # ustvari glavo v prvih 2 bytih je dolzina sporocila (HEADER_LENGTH)
+    # metoda pack "!H" : !=network byte order, H=unsigned short
+    header = struct.pack("!H", len(message))
+
+    message = header + message
+    sock.sendall(message)
+
+def client_thread(client_sock, client_addr):
+    global clients, sn
+    
+    print("[system] connected with " + client_addr[0] + ":" + str(client_addr[1]))
+    print("[system] we now have " + str(len(clients)) + " clients")
+    
+    msg = receive_message(client_sock)
     contentid, tid_enc = msg[:32], msg[32:]
         
     tid = sk_ls.decrypt(
@@ -75,21 +116,22 @@ def client_thread(msg):
             
     response = temp_pk.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo) + nonce + f.encrypt(pt)
     
-    with open("comms/la.msg", "wb") as h:
-        h.write(response)
-    
-    print("Issued license.\nWaiting for confirmation...")
+    # with open("comms/la.msg", "wb") as h:
+    #     h.write(response)
+    send_message(client_sock, response)
+    print("Issued license to " + client_addr[0] + ":" + str(client_addr[1])+".\nWaiting for confirmation...")
     
     # RECEIVE ({Sig_U( H(T_U || T_LS || License) || token )}_K), if successful INCREASE SN
-    confirmation = None
-    while confirmation == None:
-        try:
-            with open("comms/ls.msg", "rb") as h:
-                confirmation = h.read()
-        except FileNotFoundError:
-            time.sleep(1)
-            continue
-    os.remove("comms/ls.msg")
+    # confirmation = None
+    # while confirmation == None:
+    #     try:
+    #         with open("comms/ls.msg", "rb") as h:
+    #             confirmation = h.read()
+    #     except FileNotFoundError:
+    #         time.sleep(1)
+    #         continue
+    # os.remove("comms/ls.msg")
+    confirmation = receive_message(client_sock)
     print("Confirmation received.")
     pt = f.decrypt(confirmation, None)
     confirmation_hash, token = pt[:512], pt[512:]
@@ -143,19 +185,26 @@ with open("DeviceDB.db", "rb") as h:
 with open("rules.prp", "rb") as r:
     rule = r.read()
 
+server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server_socket.bind(("localhost", PORT))
+server_socket.listen(1)
+
 # LISTEN FOR LICENSE REQUESTS
+print("Waiting for license request...")
+clients = set()
+clients_lock = threading.Lock()
 while True:
-    print("Waiting for license request...")
     try:
-        # RECEIVE (TID || ContentID)
-        with open("comms/ls.msg", "rb") as h:
-            msg = h.read()
-        os.remove("comms/ls.msg")
+        client_sock, client_addr = server_socket.accept()
+        with clients_lock:
+            clients.add(client_sock)
         print("License request received.\nPreparing response...")
-        thread = threading.Thread(target=client_thread, args=(msg))
+        thread = threading.Thread(target=client_thread, args=(client_sock, client_addr))
         thread.daemon = True
         thread.start()
         
-    except FileNotFoundError:
-        time.sleep(2)
-        continue
+    except KeyboardInterrupt:
+        break
+
+print("Closing server socket ...")
+server_socket.close()
