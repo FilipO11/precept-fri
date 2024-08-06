@@ -36,15 +36,10 @@ def receive_message(sock):
     message = None
     if message_length > 0:
         message = receive_fixed_length_msg(sock, message_length)
-        # message = message.decode("utf-8")
 
     return message
 
 def send_message(sock, message):
-    # encoded_message = message.encode("utf-8")
-
-    # ustvari glavo v prvih 2 bytih je dolzina sporocila (HEADER_LENGTH)
-    # metoda pack "!H" : !=network byte order, H=unsigned short
     header = struct.pack("!H", len(message))
 
     message = header + message
@@ -172,6 +167,9 @@ def acquire_license():
     # CREATE USAGE RECORD
     with open("usedata.prp", "wb") as h: 
         h.write(os.urandom(256))
+        
+    # CLOSE SOCKET
+    sock.close()
 
 try:
     with open("lic.prp", "rb") as h:
@@ -194,16 +192,11 @@ cert_ch = x509.load_pem_x509_certificate(pem_data)
 with open("ids/D_ID.id", "rb") as h:
     did = h.read()
 
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+sock.connect((CLEARINGHOUSE, CHPORT))
+print("Connected to clearinghouse " + CLEARINGHOUSE + ":" + str(PORT))
 while True:
-    request = None
-    while request == None:
-        try:
-            with open("comms/la.msg", "rb") as h:
-                request = h.read()
-        except FileNotFoundError:
-            time.sleep(1)
-            continue
-    os.remove("comms/la.msg")
+    request = receive_message(sock)
     print("Request received.\nProcessing request...")
     
     request = sk_user.decrypt(
@@ -265,20 +258,10 @@ while True:
                 + f.encrypt(pt)
                 )
     
-    with open("comms/ch.msg", "wb") as h:
-        h.write(response)
-    
+    send_message(sock, response)
     print("Usage data sent.\nWaiting for confirmation...")
     
-    confirmation = None
-    while confirmation == None:
-        try:
-            with open("comms/la.msg", "rb") as h:
-                confirmation = h.read()
-        except FileNotFoundError:
-            time.sleep(2)
-            continue
-    os.remove("comms/la.msg")
+    confirmation = receive_message(sock)
     print("Confirmation received.\nProcessing confirmation...")
     
     confirmation = f.decrypt(confirmation)
