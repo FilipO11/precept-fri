@@ -1,4 +1,64 @@
-import os, cert
+import os, cert, sqlite3
+from sqlite3 import Error
+
+def create_connection(path):
+    connection = None
+    try:
+        connection = sqlite3.connect(path)
+        print("Connection to SQLite DB successful")
+    except Error as e:
+        print(f"The error '{e}' occurred")
+
+    return connection
+
+def execute_query(connection, query):
+    cursor = connection.cursor()
+    try:
+        cursor.execute(query)
+        connection.commit()
+        print("Query executed successfully")
+    except Error as e:
+        print(f"The error '{e}' occurred")
+    
+# SQL QUERIES
+create_devices_table = """
+CREATE TABLE IF NOT EXISTS devices (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  hardware_id BLOB NOT NULL,
+  usageok INTEGER,
+  lastaudit INTEGER,
+  token BLOB
+);
+"""
+# create_licenses_table = """
+# CREATE TABLE IF NOT EXISTS licenses (
+#   id INTEGER PRIMARY KEY AUTOINCREMENT,
+#   dateissued INTEGER,
+#   FOREIGN KEY (device_id) REFERENCES devices (id)
+#   FOREIGN KEY (token_id) REFERENCES tokens (id)
+# );
+# """
+# create_tokens_table = """
+# CREATE TABLE IF NOT EXISTS tokens (
+#   id INTEGER PRIMARY KEY AUTOINCREMENT,
+#   data BLOB,
+#   FOREIGN KEY (device_id) REFERENCES devices (id)
+#   FOREIGN KEY (license_id) REFERENCES licenses (id)
+# );
+# """
+try:
+    connection = sqlite3.connect("precept.db")
+    print("Connection to SQLite DB successful")
+except Error as e:
+    print(f"The error '{e}' occurred")
+
+cursor = connection.cursor()
+try:
+    cursor.execute(create_devices_table)
+    connection.commit()
+    print("Query executed successfully")
+except Error as e:
+    print(f"The error '{e}' occurred")
 
 # INITIALIZE SERIAL NUMBER RECORD
 sn = 0
@@ -46,7 +106,17 @@ with open("ids/D_ID.id", "wb") as h:
     h.write(did)
 
 # GENERATE DEVICE DB
-with open("DeviceDB.db", "wb") as db:
-    db.write(did)
-    for i in range(100):
-        db.write(os.urandom(32))
+devices = (
+           {"did":did},
+)
+for i in range(5):
+    devices += ({"did":os.urandom(32)},)
+try:
+    cursor.executemany("INSERT INTO devices(hardware_id) VALUES(:did)", devices)
+    connection.commit()
+    print("Query executed successfully")
+except Error as e:
+    print(f"The error '{e}' occurred")
+    
+cursor.execute("SELECT * FROM devices")
+print(cursor.fetchall())
