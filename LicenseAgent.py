@@ -246,6 +246,7 @@ while True:
     
     f = Fernet(k)
     pt = exchange_hash + usedata_enc + sig + token_ch
+    print("sig: %i" % len(sig))
     
     response = (temp_pk.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
                 + nonce

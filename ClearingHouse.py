@@ -83,7 +83,7 @@ while True:
             time.sleep(2)
             continue
     os.remove("comms/ch.msg")
-    print("Data received.\nCalculating confirmation...")
+    print("Data received.\nProcessing response...")
     
     temp_pk_user, nonce, sym_ct = response[:174], response[174:206], response[206:]
     temp_pk_user = serialization.load_pem_public_key(temp_pk_user)
@@ -96,7 +96,7 @@ while True:
     f = Fernet(k)
     sym_pt = f.decrypt(sym_ct)
     
-    exchange_hash, usedata = sym_pt[:32], sym_pt[32:544]
+    exchange_hash, usedata_enc, datasig = sym_pt[:32], sym_pt[32:544], sym_pt[544:1056]
     
     digest = hashes.Hash(hashes.SHA256())
     digest.update(temp_pk.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
@@ -108,8 +108,23 @@ while True:
         print("ERROR: Invalid exchange hash.")
         exit(1) # SHOULD BE CONTINUE OR SOMETHING
     
+    try:
+        print("Checking response signature...")
+        cert_user.public_key().verify(
+            datasig,
+            exchange_hash + usedata_enc,
+            padding.PSS(
+                mgf=padding.MGF1(hashes.SHA256()),
+                salt_length=padding.PSS.MAX_LENGTH
+            ),
+            hashes.SHA256()
+        )
+    except InvalidSignature:
+        print("ERROR: Invalid response signature.")
+        exit(1)
+    
     usedata = sk_ch.decrypt(
-        ciphertext = usedata,
+        ciphertext = usedata_enc,
         padding = padding.OAEP(
             mgf = padding.MGF1(algorithm=hashes.SHA256()),
             algorithm = hashes.SHA256(),
@@ -117,6 +132,7 @@ while True:
         )
     )
     
+    print("Response verified.\nPreparing confirmation...")
     digest = hashes.Hash(hashes.SHA256())
     digest.update(temp_pk.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
                   + temp_pk_user.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
