@@ -13,13 +13,13 @@ def xor_bytes(s1, s2):
 
     return bytes(res)
 
-def client_thread(msg):
+def issue_license(msg):
     with open("sn.prp", "rb") as r:
         sn = int.from_bytes(r.read())
 
     with open("DeviceDB.db", "rb") as dbfile:
         db = pickle.load(dbfile)
-            
+    
     with open("rules.prp", "rb") as r:
         rule = r.read()
     
@@ -68,7 +68,15 @@ def client_thread(msg):
     
     other_data = bytes(32)
     
-    license = sn.to_bytes(8, "big") + date + rule + other_data
+    license = sn.to_bytes(8, "big") + kid + date + rule + other_data
+    print("LICENSE BREAKDOWN\n\tsn: %i\n\tkid: %i\n\tdate: %i\n\trule: %i\n\tother data: %i\n\tlicense data: %i" % 
+          (len(sn.to_bytes(8, "big")), 
+          len(kid), 
+          len(date), 
+          len(rule), 
+          len(other_data), 
+          len(license))
+    )
     sig_lic = sk_ls.sign(
         license, 
         padding.PSS(
@@ -78,9 +86,44 @@ def client_thread(msg):
         hashes.SHA256()
     )
     license += sig_lic
+    print("\tsig: %i\nlicense full (w/ sig): %i\n" % (len(sig_lic), len(license)))
+    
+    # asym encrpyt license via hybrid cipher
+    lic_enc_k = Fernet.generate_key()
+    lic_f = Fernet(lic_enc_k)
+    license_enc = lic_f.encrypt(license)
+    
+    lic_enc_k = cert_user.public_key().encrypt(
+        plaintext = lic_enc_k,
+        padding = padding.OAEP(
+            mgf = padding.MGF1(algorithm=hashes.SHA256()),
+            algorithm = hashes.SHA256(),
+            label=None
+        )
+    )
     
     f = Fernet(k)
-    pt = exchange_hash + license + contentid + cert_ls_pem
+    pt = exchange_hash + license_enc + lic_enc_k + contentid
+    
+    sig_fer = sk_ls.sign(
+        pt, 
+        padding.PSS(
+            mgf=padding.MGF1(hashes.SHA256()),
+            salt_length=padding.PSS.MAX_LENGTH
+        ),
+        hashes.SHA256()
+    )
+    pt += sig_fer + cert_ls_pem
+    
+    print("FERNET BREAKDOWN\n\texchange hash: %i\n\tlicense (enc w/ lic_k): %i\n\tlicense key(enc w/ pk_user): %i\n\tcontent id: %i\n\tfer signature: %i\n\tcertificate: %i\nfernet full: %i\n" % 
+          (len(exchange_hash),
+          len(license_enc),
+          len(lic_enc_k),
+          len(contentid),
+          len(sig_fer),
+          len(cert_ls_pem),
+          len(pt))
+    )
             
     response = temp_pk.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo) + nonce + f.encrypt(pt)
     
@@ -122,12 +165,16 @@ def client_thread(msg):
         exit(1)
     
     db[did] = token
-    with open("Device.db", "wb") as dbfile:
+    for d in db:
+        if db[d] != b'': print(d.hex(), "\n", token.hex())
+    with open("DeviceDB.db", "wb") as dbfile:
         pickle.dump(db, dbfile)
     
     sn += 1
     with open("sn.prp", "wb") as h:
         h.write(sn.to_bytes(8, "big"))
+        
+    print("Finished.\n\nWaiting for license requests...")
 
 # LOAD FROM FILES
 with open("pki/sk_ls.pem", "rb") as h:
@@ -145,17 +192,18 @@ with open("ids/LS_ID.id", "rb") as c:
     lsid = c.read()
 
 # LISTEN FOR LICENSE REQUESTS
+print("Waiting for license request...")
 while True:
-    print("Waiting for license request...")
     try:
         # RECEIVE (TID || ContentID)
         with open("comms/ls.msg", "rb") as h:
             msg = h.read()
         os.remove("comms/ls.msg")
         print("License request received.\nPreparing response...")
-        thread = threading.Thread(target=client_thread, args=(msg))
-        thread.daemon = True
-        thread.start()
+        # thread = threading.Thread(target=issue_license, args=(msg))
+        # thread.daemon = True
+        # thread.start()
+        issue_license(msg)
         
     except FileNotFoundError:
         time.sleep(2)

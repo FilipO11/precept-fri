@@ -69,14 +69,42 @@ def acquire_license():
     
     f = Fernet(k)
     sym_pt = f.decrypt(sym_ct)
-    exchange_hash, license = sym_pt[:32], sym_pt[32:602]
+    exchange_hash, license, license_k, contentid, sig_fer = sym_pt[:32], sym_pt[32:920], sym_pt[920:1432], sym_pt[1432:1464], sym_pt[1464:1976]
+    
+    try:
+        print("Checking response signature...")
+        cert_ls.public_key().verify(
+            sig_fer,
+            sym_pt[:1464],
+            padding.PSS(
+                mgf=padding.MGF1(hashes.SHA256()),
+                salt_length=padding.PSS.MAX_LENGTH
+            ),
+            hashes.SHA256()
+        )
+        print("Signature verified.\nComputing confirmation...")
+    except InvalidSignature:
+        print("ERROR: Invalid response signature.")
+        exit(1)
+    
+    license_k = sk_user.decrypt(
+        ciphertext = license_k,
+        padding = padding.OAEP(
+            mgf = padding.MGF1(algorithm=hashes.SHA256()),
+            algorithm = hashes.SHA256(),
+            label=None
+        )
+    )
+    
+    lic_f = Fernet(license_k)
+    license = lic_f.decrypt(license)
     
     try:
         print("Checking license signature...")
-        lic_sig = license[58:]
+        lic_sig = license[90:]
         cert_ls.public_key().verify(
             lic_sig,
-            license[:58],
+            license[:90],
             padding.PSS(
                 mgf=padding.MGF1(hashes.SHA256()),
                 salt_length=padding.PSS.MAX_LENGTH
@@ -124,6 +152,9 @@ def acquire_license():
     
     with open("lic.prp", "wb") as h:
         h.write(license)
+        
+    with open("token.prp", "wb") as h:
+        h.write(token)
     
     # CREATE USAGE RECORD
     with open("usedata.prp", "wb") as h: 
@@ -241,7 +272,7 @@ while True:
     confirmation_hash, confhash_sig = confirmation[:32], confirmation[32:]
         
     try:
-        print("Checking license signature...")
+        print("Checking confirmation signature...")
         cert_ch.public_key().verify(
             confhash_sig,
             confirmation_hash,

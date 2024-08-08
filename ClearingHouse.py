@@ -36,12 +36,14 @@ with open("DeviceDB.db", "rb") as dbfile:
         
 with open("rules.prp", "rb") as r:
     rule = r.read()
-    
+
 token = None
 while token == None:
     # WAIT FOR DEVICE TO BE LICENSED
     for device in db:
-        if db[device] != b'': token = db[device]
+        if db[device] != b'': 
+            token = db[device]
+            break
         else: time.sleep(2)
 
 time.sleep(1)
