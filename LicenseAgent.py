@@ -78,22 +78,10 @@ def acquire_license():
     with open("ids/Content_ID.id", "rb") as h:
         contentid = h.read()
     
-    # with open("comms/ls.msg", "wb") as h:
-    #     h.write(contentid + tid)
-
     send_message(sock, contentid + tid)    
     print("Request sent.\nWaiting for response...")
 
     # RECEIVE (T_LS || r || {Sig_LS( H(r || T-LS || T_U) || PK_U(License) || ContentID ) || Cert_LS}_K)
-    # response = None
-    # while response == None:
-    #     try:
-    #         with open("comms/la.msg", "rb") as h:
-    #             response = h.read()
-    #     except FileNotFoundError:
-    #         time.sleep(1)
-    #         continue
-    # os.remove("comms/la.msg")
     response = receive_message(sock)
     print("Response received.\nProcessing response...")
     temp_pk_ls, nonce, sym_ct = response[:174], response[174:206], response[206:]
@@ -157,8 +145,6 @@ def acquire_license():
     print("token: ", len(token))
     confirm_license = f.encrypt(confirmation_hash + token)
     
-    # with open("comms/ls.msg", "wb") as h:
-    #     h.write(confirm_license)
     send_message(sock, confirm_license)
     
     with open("lic.prp", "wb") as h:
@@ -194,7 +180,7 @@ with open("ids/D_ID.id", "rb") as h:
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 sock.connect((CLEARINGHOUSE, CHPORT))
-print("Connected to clearinghouse " + CLEARINGHOUSE + ":" + str(PORT))
+print("Connected to clearinghouse " + CLEARINGHOUSE + ":" + str(CHPORT))
 while True:
     request = receive_message(sock)
     print("Request received.\nProcessing request...")

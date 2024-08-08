@@ -4,4 +4,4 @@ keys/*
 pki/*
 comms/*
 *.prp
-DeviceDB.db
+*.db
