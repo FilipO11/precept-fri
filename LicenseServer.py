@@ -1,5 +1,5 @@
 # IMPORTS
-import datetime, os, time, base64, threading
+import datetime, os, time, base64, threading, pickle
 from cryptography import x509
 from cryptography.fernet import Fernet
 from cryptography.exceptions import InvalidSignature
@@ -14,6 +14,15 @@ def xor_bytes(s1, s2):
     return bytes(res)
 
 def client_thread(msg):
+    with open("sn.prp", "rb") as r:
+        sn = int.from_bytes(r.read())
+
+    with open("DeviceDB.db", "rb") as dbfile:
+        db = pickle.load(dbfile)
+            
+    with open("rules.prp", "rb") as r:
+        rule = r.read()
+    
     contentid, tid_enc = msg[:32], msg[32:]
         
     tid = sk_ls.decrypt(
@@ -112,8 +121,9 @@ def client_thread(msg):
         print("ERROR: Invalid license signature.")
         exit(1)
     
-    with open("token.prp", "wb") as h:
-        h.write(token)
+    db[did] = token
+    with open("Device.db", "wb") as dbfile:
+        pickle.dump(db, dbfile)
     
     sn += 1
     with open("sn.prp", "wb") as h:
@@ -133,15 +143,6 @@ with open("pki/cert_ls.pem", "rb") as c:
 
 with open("ids/LS_ID.id", "rb") as c:
     lsid = c.read()
-    
-with open("sn.prp", "rb") as r:
-    sn = int.from_bytes(r.read())
-
-with open("DeviceDB.db", "rb") as h:
-    db = h.read()
-        
-with open("rules.prp", "rb") as r:
-    rule = r.read()
 
 # LISTEN FOR LICENSE REQUESTS
 while True:

@@ -1,4 +1,4 @@
-import os, cert
+import os, cert, pickle
 
 # INITIALIZE SERIAL NUMBER RECORD
 sn = 0
@@ -46,7 +46,9 @@ with open("ids/D_ID.id", "wb") as h:
     h.write(did)
 
 # GENERATE DEVICE DB
-with open("DeviceDB.db", "wb") as db:
-    db.write(did)
-    for i in range(100):
-        db.write(os.urandom(32))
+db = {}
+db[did] = b''
+for i in range(100):
+    db[os.urandom(32)] = b''
+with open("DeviceDB.db", "wb") as dbfile:
+    pickle.dump(db, dbfile)

@@ -1,5 +1,5 @@
 # IMPORTS
-import datetime, os, time, base64
+import os, time, base64, pickle
 from cryptography import x509
 from cryptography.fernet import Fernet
 from cryptography.exceptions import InvalidSignature
@@ -31,21 +31,18 @@ with open("ids/CH_ID.id", "rb") as c:
 with open("sn.prp", "rb") as r:
     sn = int.from_bytes(r.read())
 
-with open("DeviceDB.db", "rb") as h:
-    db = h.read()
+with open("DeviceDB.db", "rb") as dbfile:
+    db = pickle.load(dbfile)
         
 with open("rules.prp", "rb") as r:
     rule = r.read()
     
 token = None
 while token == None:
-    # WAIT FOR DEVICE TO BE REGISTERED
-    try:
-        with open("token.prp", "rb") as h:
-            token = h.read()
-    except FileNotFoundError:
-        time.sleep(2)
-        continue
+    # WAIT FOR DEVICE TO BE LICENSED
+    for device in db:
+        if db[device] != b'': token = db[device]
+        else: time.sleep(2)
 
 time.sleep(1)
 
