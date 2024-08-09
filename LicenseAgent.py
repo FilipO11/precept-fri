@@ -1,9 +1,12 @@
-import os, sys, time, base64
+import os, sys, time, base64, requests, json
 from cryptography import x509
 from cryptography.fernet import Fernet
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec, padding
+
+LICENSESERVER = "localhost"
+LSPORT = 50000
 
 def xor_bytes(s1, s2):
     res = []
@@ -20,7 +23,8 @@ def acquire_license():
         did = h.read()
     with open("pki/cert_ls.pem", "rb") as c:
         pem_data = c.read()
-    cert_ls = x509.load_pem_x509_certificate(pem_data)    
+    cert_ls = x509.load_pem_x509_certificate(pem_data) 
+    server_url = "http://"+LICENSESERVER+":"+str(LSPORT)+"/acqlic" 
     
     print("Computing request...")
     
@@ -42,22 +46,17 @@ def acquire_license():
     with open("ids/Content_ID.id", "rb") as h:
         contentid = h.read()
     
-    with open("comms/ls.msg", "wb") as h:
-        h.write(contentid + tid)
+    request = {
+        "type": "request",
+        "body": (contentid + tid).hex()
+    }
     
     print("Request sent.\nWaiting for response...")
+    response_obj = requests.post(server_url, json=request)
+    response = bytes.fromhex(response_obj.json()["response"])
+    print("Response received.\nProcessing response...")
 
     # RECEIVE (T_LS || r || {Sig_LS( H(r || T-LS || T_U) || PK_U(License) || ContentID ) || Cert_LS}_K)
-    response = None
-    while response == None:
-        try:
-            with open("comms/la.msg", "rb") as h:
-                response = h.read()
-        except FileNotFoundError:
-            time.sleep(1)
-            continue
-    os.remove("comms/la.msg")
-    print("Response received.\nProcessing response...")
     temp_pk_ls, nonce, sym_ct = response[:174], response[174:206], response[206:]
     
     temp_pk_ls = serialization.load_pem_public_key(temp_pk_ls)
@@ -147,8 +146,11 @@ def acquire_license():
     print("token: ", len(token))
     confirm_license = f.encrypt(confirmation_hash + token)
     
-    with open("comms/ls.msg", "wb") as h:
-        h.write(confirm_license)
+    confirmation = {
+        "type": "confirmation",
+        "body": confirm_license.hex()
+    }
+    requests.post(server_url, json=confirmation)
     
     with open("lic.prp", "wb") as h:
         h.write(license)
@@ -159,6 +161,8 @@ def acquire_license():
     # CREATE USAGE RECORD
     with open("usedata.prp", "wb") as h: 
         h.write(os.urandom(256))
+    
+    return True
 
 try:
     with open("lic.prp", "rb") as h:
