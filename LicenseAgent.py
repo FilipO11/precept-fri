@@ -1,12 +1,11 @@
-import os, sys, time, base64, requests, json
+import os, time, base64, requests, asyncio, websockets
 from cryptography import x509
 from cryptography.fernet import Fernet
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec, padding
 
-LICENSESERVER = "localhost"
-LSPORT = 50000
+LICENSESERVER = "localhost:8000"
 
 def xor_bytes(s1, s2):
     res = []
@@ -24,7 +23,7 @@ def acquire_license():
     with open("pki/cert_ls.pem", "rb") as c:
         pem_data = c.read()
     cert_ls = x509.load_pem_x509_certificate(pem_data) 
-    server_url = "http://"+LICENSESERVER+":"+str(LSPORT)+"/acqlic" 
+    server_url = "http://"+LICENSESERVER+"/acqlic" 
     
     print("Computing request...")
     
@@ -164,130 +163,137 @@ def acquire_license():
     
     return True
 
-try:
-    with open("lic.prp", "rb") as h:
-        license = h.read()
-except FileNotFoundError:
-    print("No license found. Issuing request.")
-    acquire_license()
-print("License acquired. Proceeding in idle mode.")
+async def checkin():
+    async with websockets.connect("ws://localhost:8000/checkin", ping_interval=None) as ws:
+        while True:
+            request = await ws.recv()
+            # while request == None:
+            #     try:
+            #         with open("comms/la.msg", "rb") as h:
+            #             request = h.read()
+            #     except FileNotFoundError:
+            #         time.sleep(1)
+            #         continue
+            # os.remove("comms/la.msg")
 
-with open("lic.prp", "rb") as h:
-    license = h.read()
-with open("token.prp", "rb") as h:
-    token = h.read()
-with open("pki/sk_user.pem", "rb") as h:
-    pem_data = h.read()
-sk_user = serialization.load_pem_private_key(pem_data, None)
-with open("pki/cert_ch.pem", "rb") as c:
-    pem_data = c.read()
-cert_ch = x509.load_pem_x509_certificate(pem_data)
-with open("ids/D_ID.id", "rb") as h:
-    did = h.read()
+            print("Request received.\nProcessing request...")
 
-while True:
-    request = None
-    while request == None:
-        try:
-            with open("comms/la.msg", "rb") as h:
-                request = h.read()
-        except FileNotFoundError:
-            time.sleep(1)
-            continue
-    os.remove("comms/la.msg")
-    print("Request received.\nProcessing request...")
-    
-    request = sk_user.decrypt(
-        ciphertext = request,
-        padding = padding.OAEP(
-            mgf = padding.MGF1(algorithm=hashes.SHA256()),
-            algorithm = hashes.SHA256(),
-            label=None
-        )
-    )
-    token_ch, chid, temp_pk_ch = request[:32], request[32:64], serialization.load_pem_public_key(request[64:])
-    
-    if token_ch != token:
-        print("ERROR: Invalid token.")
-        exit(1)
-    
-    temp_sk = ec.generate_private_key(ec.SECP256K1())
-    temp_pk = temp_sk.public_key()
-    nonce = os.urandom(32)
-    
-    shared = temp_sk.exchange(ec.ECDH(), temp_pk_ch)
-    digest = hashes.Hash(hashes.SHA256())
-    digest.update(shared + nonce)
-    k = base64.urlsafe_b64encode(digest.finalize())
-    
-    digest = hashes.Hash(hashes.SHA256())
-    digest.update(temp_pk_ch.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
-                  + temp_pk.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
-                  + nonce
-                  )
-    exchange_hash = digest.finalize()
-    
-    with open("usedata.prp", "rb") as h:
-        usedata = h.read()
-    
-    usedata_enc = cert_ch.public_key().encrypt(
-        plaintext = request,
-        padding = padding.OAEP(
-            mgf = padding.MGF1(algorithm=hashes.SHA256()),
-            algorithm = hashes.SHA256(),
-            label=None
-        )
-    )
-    
-    sig = sk_user.sign(
-        exchange_hash + usedata_enc, 
-        padding.PSS(
-            mgf=padding.MGF1(hashes.SHA256()),
-            salt_length=padding.PSS.MAX_LENGTH
-        ),
-        hashes.SHA256()
-    )
-    
-    f = Fernet(k)
-    pt = exchange_hash + usedata_enc + sig + token_ch
-    print("sig: %i" % len(sig))
-    
-    response = (temp_pk.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
-                + nonce
-                + f.encrypt(pt)
+            request = sk_user.decrypt(
+                ciphertext = request,
+                padding = padding.OAEP(
+                    mgf = padding.MGF1(algorithm=hashes.SHA256()),
+                    algorithm = hashes.SHA256(),
+                    label=None
                 )
-    
-    with open("comms/ch.msg", "wb") as h:
-        h.write(response)
-    
-    print("Usage data sent.\nWaiting for confirmation...")
-    
-    confirmation = None
-    while confirmation == None:
+            )
+            token_ch, chid, temp_pk_ch = request[:32], request[32:64], serialization.load_pem_public_key(request[64:])
+
+            if token_ch != token:
+                print("ERROR: Invalid token.")
+                exit(1)
+
+            temp_sk = ec.generate_private_key(ec.SECP256K1())
+            temp_pk = temp_sk.public_key()
+            nonce = os.urandom(32)
+
+            shared = temp_sk.exchange(ec.ECDH(), temp_pk_ch)
+            digest = hashes.Hash(hashes.SHA256())
+            digest.update(shared + nonce)
+            k = base64.urlsafe_b64encode(digest.finalize())
+
+            digest = hashes.Hash(hashes.SHA256())
+            digest.update(temp_pk_ch.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
+                          + temp_pk.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
+                          + nonce
+                          )
+            exchange_hash = digest.finalize()
+
+            with open("usedata.prp", "rb") as h:
+                usedata = h.read()
+
+            usedata_enc = cert_ch.public_key().encrypt(
+                plaintext = usedata,
+                padding = padding.OAEP(
+                    mgf = padding.MGF1(algorithm=hashes.SHA256()),
+                    algorithm = hashes.SHA256(),
+                    label=None
+                )
+            )
+
+            sig = sk_user.sign(
+                exchange_hash + usedata_enc, 
+                padding.PSS(
+                    mgf=padding.MGF1(hashes.SHA256()),
+                    salt_length=padding.PSS.MAX_LENGTH
+                ),
+                hashes.SHA256()
+            )
+
+            f = Fernet(k)
+            pt = exchange_hash + usedata_enc + sig + token_ch
+            print("sig: %i" % len(sig))
+
+            response = (temp_pk.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
+                        + nonce
+                        + f.encrypt(pt)
+                        )
+
+            # with open("comms/ch.msg", "wb") as h:
+            #     h.write(response)
+            await ws.send(response)
+
+            print("Usage data sent.\nWaiting for confirmation...")
+
+            confirmation = await ws.recv()
+            # while confirmation == None:
+            #     try:
+            #         with open("comms/la.msg", "rb") as h:
+            #             confirmation = h.read()
+            #     except FileNotFoundError:
+            #         time.sleep(2)
+            #         continue
+            # os.remove("comms/la.msg")
+            print("Confirmation received.\nProcessing confirmation...")
+
+            confirmation = f.decrypt(confirmation)
+            confirmation_hash, confhash_sig = confirmation[:32], confirmation[32:]
+            
+            try:
+                print("Checking confirmation signature...")
+                cert_ch.public_key().verify(
+                    confhash_sig,
+                    confirmation_hash,
+                    padding.PSS(
+                        mgf=padding.MGF1(hashes.SHA256()),
+                        salt_length=padding.PSS.MAX_LENGTH
+                    ),
+                    hashes.SHA256()
+                )
+            except InvalidSignature:
+                print("ERROR: Invalid confirmation signature.")
+                continue
+            print("Confirmation verified. Proceeding in idle mode.")
+
+if __name__ == "__main__":
+    license = None
+    while license is None:
         try:
-            with open("comms/la.msg", "rb") as h:
-                confirmation = h.read()
+            with open("lic.prp", "rb") as h:
+                license = h.read()
         except FileNotFoundError:
-            time.sleep(2)
-            continue
-    os.remove("comms/la.msg")
-    print("Confirmation received.\nProcessing confirmation...")
-    
-    confirmation = f.decrypt(confirmation)
-    confirmation_hash, confhash_sig = confirmation[:32], confirmation[32:]
-        
-    try:
-        print("Checking confirmation signature...")
-        cert_ch.public_key().verify(
-            confhash_sig,
-            confirmation_hash,
-            padding.PSS(
-                mgf=padding.MGF1(hashes.SHA256()),
-                salt_length=padding.PSS.MAX_LENGTH
-            ),
-            hashes.SHA256()
-        )
-    except InvalidSignature:
-        print("ERROR: Invalid confirmation signature.")
-        continue
-    print("Confirmation verified. Proceeding in idle mode.")
+            print("No license found. Issuing request.")
+            acquire_license()
+        print("License acquired. Proceeding in idle mode.")
+
+    with open("token.prp", "rb") as h:
+        token = h.read()
+    with open("pki/sk_user.pem", "rb") as h:
+        pem_data = h.read()
+    sk_user = serialization.load_pem_private_key(pem_data, None)
+    with open("pki/cert_ch.pem", "rb") as c:
+        pem_data = c.read()
+    cert_ch = x509.load_pem_x509_certificate(pem_data)
+    with open("ids/D_ID.id", "rb") as h:
+        did = h.read()
+
+    asyncio.run(checkin())
