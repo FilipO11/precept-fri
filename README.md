@@ -5,7 +5,9 @@ locally simulated implementation of PrecePt license management protocol
 
 run init.py to prepare test environment
 
+License Acqusition Phase communication via ASGI HTTP (might switch to WS)
+Usage Tracking Phase communication via ASGI WebSocket
+
 ## Notes:
-- server currently issues the license WITHOUT asymetrically encrypting it due to the limitations of the current implementation (RSA plaintext size)
-- communication is currently simulated: messages are written to the "comms" folder
+- server issues license using hybrid encryption scheme
 - all PKI elements currently available to all parties; will be changed when all phases are implemented and tested
