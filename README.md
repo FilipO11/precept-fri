@@ -3,11 +3,10 @@ FRI diploma assignment
 
 locally simulated implementation of PrecePt license management protocol
 
-run init.py to prepare test environment
+run init.py to simulate environment
 
-License Acqusition Phase communication via ASGI HTTP (might switch to WS)
+License Acqusition Phase communication via ASGI HTTP
 Usage Tracking Phase communication via ASGI WebSocket
 
 ## Notes:
-- server issues license using hybrid encryption scheme
-- all PKI elements currently available to all parties; will be changed when all phases are implemented and tested
+- big asymetric payloads encrypted via hybrid encryption scheme
