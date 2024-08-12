@@ -6,6 +6,8 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec, padding
 
 LICENSESERVER = "localhost:8000"
+ACQUISITIONURI = "http://"+LICENSESERVER+"/acqlic" 
+TRACKINGURI = "ws://"+LICENSESERVER+"/tracking"
 
 def xor_bytes(s1, s2):
     res = []
@@ -22,8 +24,7 @@ def acquire_license():
         did = h.read()
     with open("pki/cert_ls.pem", "rb") as c:
         pem_data = c.read()
-    cert_ls = x509.load_pem_x509_certificate(pem_data) 
-    server_url = "http://"+LICENSESERVER+"/acqlic" 
+    cert_ls = x509.load_pem_x509_certificate(pem_data)
     
     print("Computing request...")
     
@@ -51,7 +52,7 @@ def acquire_license():
     }
     
     print("Request sent.\nWaiting for response...")
-    response_obj = requests.post(server_url, json=request)
+    response_obj = requests.post(ACQUISITIONURI, json=request)
     response = bytes.fromhex(response_obj.json()["response"])
     print("Response received.\nProcessing response...")
 
@@ -149,7 +150,7 @@ def acquire_license():
         "type": "confirmation",
         "body": confirm_license.hex()
     }
-    requests.post(server_url, json=confirmation)
+    requests.post(ACQUISITIONURI, json=confirmation)
     
     with open("lic.prp", "wb") as h:
         h.write(license)
@@ -163,19 +164,10 @@ def acquire_license():
     
     return True
 
-async def checkin():
-    async with websockets.connect("ws://localhost:8000/checkin", ping_interval=None) as ws:
+async def tracking():
+    async with websockets.connect(TRACKINGURI) as ws:
         while True:
             request = await ws.recv()
-            # while request == None:
-            #     try:
-            #         with open("comms/la.msg", "rb") as h:
-            #             request = h.read()
-            #     except FileNotFoundError:
-            #         time.sleep(1)
-            #         continue
-            # os.remove("comms/la.msg")
-
             print("Request received.\nProcessing request...")
 
             request = sk_user.decrypt(
@@ -211,8 +203,12 @@ async def checkin():
             with open("usedata.prp", "rb") as h:
                 usedata = h.read()
 
-            usedata_enc = cert_ch.public_key().encrypt(
-                plaintext = usedata,
+            usedata_enc_k = Fernet.generate_key()
+            ud_f = Fernet(usedata_enc_k)
+            usedata_enc = ud_f.encrypt(usedata)
+            
+            usedata_enc_k = cert_ch.public_key().encrypt(
+                plaintext = usedata_enc_k,
                 padding = padding.OAEP(
                     mgf = padding.MGF1(algorithm=hashes.SHA256()),
                     algorithm = hashes.SHA256(),
@@ -230,29 +226,23 @@ async def checkin():
             )
 
             f = Fernet(k)
-            pt = exchange_hash + usedata_enc + sig + token_ch
-            print("sig: %i" % len(sig))
+            pt = (
+                exchange_hash 
+                  + usedata_enc_k 
+                  + sig 
+                  + token_ch
+                  + usedata_enc
+            )
 
             response = (temp_pk.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
                         + nonce
                         + f.encrypt(pt)
                         )
 
-            # with open("comms/ch.msg", "wb") as h:
-            #     h.write(response)
             await ws.send(response)
-
             print("Usage data sent.\nWaiting for confirmation...")
 
             confirmation = await ws.recv()
-            # while confirmation == None:
-            #     try:
-            #         with open("comms/la.msg", "rb") as h:
-            #             confirmation = h.read()
-            #     except FileNotFoundError:
-            #         time.sleep(2)
-            #         continue
-            # os.remove("comms/la.msg")
             print("Confirmation received.\nProcessing confirmation...")
 
             confirmation = f.decrypt(confirmation)
@@ -296,4 +286,4 @@ if __name__ == "__main__":
     with open("ids/D_ID.id", "rb") as h:
         did = h.read()
 
-    asyncio.run(checkin())
+    asyncio.run(tracking())

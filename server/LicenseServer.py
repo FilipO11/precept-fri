@@ -1,6 +1,5 @@
 # IMPORTS
 import datetime, time, os, base64, pickle, falcon, falcon.asgi, uvicorn
-# from wsgiref.simple_server import make_server
 from cryptography import x509
 from cryptography.fernet import Fernet
 from cryptography.exceptions import InvalidSignature
@@ -198,7 +197,7 @@ def xor_bytes(s1, s2):
 
     return bytes(res)
 
-class UsageChecker:
+class UsageTracker:
     async def on_websocket(self, req, ws):
         await ws.accept()
         
@@ -232,21 +231,10 @@ class UsageChecker:
                 )
             )
             
-            # with open("comms/la.msg", "wb") as h:
-            #     h.write(request)
             await ws.send_data(request)
-            
             print("Usage data request sent.\nWaiting for data...")
             
             response = await ws.receive_data()
-            # while response == None:
-            #     try:
-            #         with open("comms/ch.msg", "rb") as h:
-            #             response = h.read()
-            #     except FileNotFoundError:
-            #         time.sleep(2)
-            #         continue
-            # os.remove("comms/ch.msg")
             print("Data received.\nProcessing response...")
             
             temp_pk_user, nonce, sym_ct = response[:174], response[174:206], response[206:]
@@ -260,7 +248,7 @@ class UsageChecker:
             f = Fernet(k)
             sym_pt = f.decrypt(sym_ct)
             
-            exchange_hash, usedata_enc, datasig = sym_pt[:32], sym_pt[32:544], sym_pt[544:1056]
+            exchange_hash, usedata_enc_k, datasig, usedata_enc = sym_pt[:32], sym_pt[32:544], sym_pt[544:1056], sym_pt[1088:]
             
             digest = hashes.Hash(hashes.SHA256())
             digest.update(temp_pk.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
@@ -270,7 +258,7 @@ class UsageChecker:
             
             if exchange_hash != digest.finalize():
                 print("ERROR: Invalid exchange hash.")
-                exit(1) # SHOULD BE CONTINUE OR SOMETHING
+                exit(1) # SHOULD BE HANDLED APPROPRIATELY
             
             try:
                 print("Checking response signature...")
@@ -287,8 +275,8 @@ class UsageChecker:
                 print("ERROR: Invalid response signature.")
                 exit(1)
             
-            usedata = sk_ch.decrypt(
-                ciphertext = usedata_enc,
+            usedata_k = sk_ch.decrypt(
+                ciphertext = usedata_enc_k,
                 padding = padding.OAEP(
                     mgf = padding.MGF1(algorithm=hashes.SHA256()),
                     algorithm = hashes.SHA256(),
@@ -296,7 +284,10 @@ class UsageChecker:
                 )
             )
             
+            ud_f = Fernet(usedata_k)
+            usedata = ud_f.decrypt(usedata_enc)
             print("Response verified.\nPreparing confirmation...")
+
             digest = hashes.Hash(hashes.SHA256())
             digest.update(temp_pk.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
                         + temp_pk_user.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
@@ -316,15 +307,13 @@ class UsageChecker:
             
             confirmation = f.encrypt(confirmation_hash + sig)
             
-            # with open("comms/la.msg", "wb") as h:
-            #     h.write(confirmation)
             await ws.send_data(confirmation)
-            
             print("Confirmation sent.\nStarting next cycle...")
+
             time.sleep(5)
     
 # LOAD FROM FILES
-with open("pki/sk_ls.pem", "rb") as h:
+with open("./pki/sk_ls.pem", "rb") as h:
     pem_data = h.read()
 sk_ls = serialization.load_pem_private_key(pem_data, None)
 
@@ -353,9 +342,9 @@ with open("rules.prp", "rb") as r:
 
 app = falcon.asgi.App()
 issuer = LicenseIssuer()
-checker = UsageChecker()
+checker = UsageTracker()
 app.add_route("/acqlic", issuer)
-app.add_route("/checkin", checker)
+app.add_route("/tracking", checker)
 
 # LISTEN FOR LICENSE REQUESTS
 if __name__ == "__main__":
