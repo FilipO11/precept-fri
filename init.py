@@ -41,6 +41,7 @@ with open("client/ids/Content_ID.id", "wb") as h:
     h.write(os.urandom(32))
 with open("client/ids/D_ID.id", "wb") as h:
     did = os.urandom(32)
+    h.write(did)
 
 # INITIALIZE SERIAL NUMBER RECORD
 sn = 0
@@ -50,7 +51,6 @@ with open("server/sn.prp", "wb") as r:
 # CREATE RULES FILE
 with open("server/rules.prp", "wb") as h: 
     h.write(os.urandom(8))
-    h.write(did)
 
 # GENERATE DEVICE DB
 db = {}
