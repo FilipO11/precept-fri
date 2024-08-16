@@ -8,7 +8,7 @@ from cryptography.hazmat.primitives.asymmetric import ec, padding
 
 class LicenseIssuer:
     def __init__(self):
-        self.clients = dict()
+        self.clients = dict() # Dictionary for storing license acquisition parameters
         
     async def on_post(self, req, resp):
         msg = await req.get_media()
@@ -17,7 +17,7 @@ class LicenseIssuer:
         
         if msgtype == "request":
             rm, params = self.issue_license(msgbody)
-            self.clients[req.remote_addr] = params
+            self.clients[req.remote_addr] = params # Save session parameters for confirmation processing
             resp.media = {"response" : rm}
             resp.status = falcon.HTTP_200
         
@@ -33,10 +33,12 @@ class LicenseIssuer:
             db = pickle.load(dbfile)
         print("Confirmation received.")
         
+        # 1. Decrypt symetric ciphertext
         f = Fernet(k)
         pt = f.decrypt(confirmation, None)
         confirmation_hash, token = pt[:512], pt[512:]
         
+        # 2. Check confirmation signature
         try:
             print("Checking confirmation...")
             cert_user.public_key().verify(
@@ -52,13 +54,15 @@ class LicenseIssuer:
             )
             print("Confirmation verified.\nFinalizing...")
         except InvalidSignature:
-            print("ERROR: Invalid license signature.")
-            exit(1)
+            print("ERROR: Invalid confirmation signature.")
+            return False
         
+        # 3. Save token to device database
         db[did] = token
         with open("DeviceDB.db", "wb") as dbfile:
             pickle.dump(db, dbfile)
         
+        # 4. Increment serial number
         sn += 1
         with open("sn.prp", "wb") as h:
             h.write(sn.to_bytes(8, "big"))
@@ -76,8 +80,10 @@ class LicenseIssuer:
         with open("rules.prp", "rb") as r:
             rule = r.read()
         
+        # 1. Unpack message: ContentID, TID (encrypted)
         contentid, tid_enc = msg[:32], msg[32:]
             
+        # 2. Decrypt TID using LS secret key
         tid = sk_ls.decrypt(
             ciphertext = tid_enc,
             padding = padding.OAEP(
@@ -87,25 +93,28 @@ class LicenseIssuer:
             )
         )
         
+        # 3. Deserialize user's temporary public key and extract DeviceID via XOR (DID = TU ^ TU ^ DID)
         temp_pk_user = serialization.load_pem_public_key(tid[:174])
         did = xor_bytes(tid[:174], tid[174:])
         did = did[:32]
         
-        # CHECK DID
+        # 4. Check if DeviceID is in the device database
         if not(did in db):
             print("ERROR: Device not registered!")
-            exit(1)
+            exit(1) # SHOULD BE HANDLED
         
-        # SEND (T_LS || r || {Sig_LS( H(r || T-LS || T_U) || PK_U(License) || ContentID ) || Cert_LS}_K)
+        # 5. Generate exchange keys and nonce
         temp_sk = ec.generate_private_key(ec.SECP256K1())
         temp_pk = temp_sk.public_key()
         nonce = os.urandom(32)
         
+        # 6. Derive session key
         shared = temp_sk.exchange(ec.ECDH(), temp_pk_user)
         digest = hashes.Hash(hashes.SHA256())
         digest.update(shared + nonce)
         k = base64.urlsafe_b64encode(digest.finalize())
         
+        # 7. Calculate exchange hash H(r || T_LS || T_U)
         digest = hashes.Hash(hashes.SHA256())
         digest.update(nonce 
                         + temp_pk.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
@@ -113,23 +122,19 @@ class LicenseIssuer:
                         )
         exchange_hash = digest.finalize()
         
+        # 8. Calculate KID H(DeviceID || LicenseServerID)
         digest = hashes.Hash(hashes.SHA256())
         digest.update(did + lsid)
         kid = digest.finalize()
         
+        # 9. Record date
         date = datetime.date.today().isoformat().encode("utf-8")
         
+        # 10. Load other data
         other_data = bytes(32)
         
+        # 11. Assemble license
         license = sn.to_bytes(8, "big") + kid + date + rule + other_data
-        print("LICENSE BREAKDOWN\n\tsn: %i\n\tkid: %i\n\tdate: %i\n\trule: %i\n\tother data: %i\n\tlicense data: %i" % 
-            (len(sn.to_bytes(8, "big")), 
-            len(kid), 
-            len(date), 
-            len(rule), 
-            len(other_data), 
-            len(license))
-        )
         sig_lic = sk_ls.sign(
             license, 
             padding.PSS(
@@ -139,9 +144,8 @@ class LicenseIssuer:
             hashes.SHA256()
         )
         license += sig_lic
-        print("\tsig: %i\nlicense full (w/ sig): %i\n" % (len(sig_lic), len(license)))
         
-        # asym encrpyt license via hybrid cipher
+        # 12. Asymetrically encrypt license via hybrid cipher
         lic_enc_k = Fernet.generate_key()
         lic_f = Fernet(lic_enc_k)
         license_enc = lic_f.encrypt(license)
@@ -155,9 +159,11 @@ class LicenseIssuer:
             )
         )
         
+        # 13. Initialize Fernet cipher and assemble response plaintext
         f = Fernet(k)
         pt = exchange_hash + license_enc + lic_enc_k + contentid
         
+        # 14. Sign part of the (to be) symetrically encrypted plaintext
         sig_fer = sk_ls.sign(
             pt, 
             padding.PSS(
@@ -166,18 +172,9 @@ class LicenseIssuer:
             ),
             hashes.SHA256()
         )
-        pt += sig_fer + cert_ls_pem
-        
-        print("FERNET BREAKDOWN\n\texchange hash: %i\n\tlicense (enc w/ lic_k): %i\n\tlicense key(enc w/ pk_user): %i\n\tcontent id: %i\n\tfer signature: %i\n\tcertificate: %i\nfernet full: %i\n" % 
-            (len(exchange_hash),
-            len(license_enc),
-            len(lic_enc_k),
-            len(contentid),
-            len(sig_fer),
-            len(cert_ls_pem),
-            len(pt))
-        )
-                
+        pt += sig_fer + cert_ls_pem # Add signature and LS certificate to the plaintext
+                      
+        # 15. Assemble response payload
         response = temp_pk.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo) + nonce + f.encrypt(pt)
         params = {
             "k": k,
@@ -201,6 +198,7 @@ class UsageTracker:
     async def on_websocket(self, req, ws):
         await ws.accept()
         
+        # 1. Search for token
         with open("DeviceDB.db", "rb") as dbfile:
             db = pickle.load(dbfile)
             token = None
@@ -213,15 +211,17 @@ class UsageTracker:
         while True:
             print("Registered licenses detected.\nRequesting usage data...")
     
-            # SEND USAGE DATA REQUEST
+            # 2. Generate exchange keys
             temp_sk = ec.generate_private_key(ec.SECP256K1())
             temp_pk = temp_sk.public_key()
             
+            # 3. Assemble request plaintext
             request = (token 
                         + chid 
                         + temp_pk.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
                         )
             
+            # 4. Encrypt request plaintext
             request = cert_user.public_key().encrypt(
                 plaintext = request,
                 padding = padding.OAEP(
@@ -237,19 +237,24 @@ class UsageTracker:
             response = await ws.receive_data()
             print("Data received.\nProcessing response...")
             
+            # 5. Unpack response
             temp_pk_user, nonce, sym_ct = response[:174], response[174:206], response[206:]
             temp_pk_user = serialization.load_pem_public_key(temp_pk_user)
             
+            # 6. Derive session key
             shared = temp_sk.exchange(ec.ECDH(), temp_pk_user)
             digest = hashes.Hash(hashes.SHA256())
             digest.update(shared + nonce)
             k = base64.urlsafe_b64encode(digest.finalize())
             
+            # 7. Decrypt the symetric ciphertext
             f = Fernet(k)
             sym_pt = f.decrypt(sym_ct)
             
+            # 8. Unpack the symetric plaintext
             exchange_hash, usedata_enc_k, datasig, usedata_enc = sym_pt[:32], sym_pt[32:544], sym_pt[544:1056], sym_pt[1088:]
             
+            # 9. Calculate exchange hash and verify it
             digest = hashes.Hash(hashes.SHA256())
             digest.update(temp_pk.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
                         + temp_pk_user.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
@@ -258,8 +263,9 @@ class UsageTracker:
             
             if exchange_hash != digest.finalize():
                 print("ERROR: Invalid exchange hash.")
-                exit(1) # SHOULD BE HANDLED APPROPRIATELY
+                exit(1) # SHOULD BE HANDLED
             
+            # 10. Check response signature
             try:
                 print("Checking response signature...")
                 cert_user.public_key().verify(
@@ -275,6 +281,7 @@ class UsageTracker:
                 print("ERROR: Invalid response signature.")
                 exit(1)
             
+            # 11. Asymetrically decrypt hybrid cipher key, then decrypt usage data
             usedata_k = sk_ch.decrypt(
                 ciphertext = usedata_enc_k,
                 padding = padding.OAEP(
@@ -288,6 +295,7 @@ class UsageTracker:
             usedata = ud_f.decrypt(usedata_enc)
             print("Response verified.\nPreparing confirmation...")
 
+            # 12. Calculate confirmation hash, sign it and encrypt it
             digest = hashes.Hash(hashes.SHA256())
             digest.update(temp_pk.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
                         + temp_pk_user.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
@@ -313,7 +321,7 @@ class UsageTracker:
             time.sleep(5)
     
 # LOAD FROM FILES
-with open("./pki/sk_ls.pem", "rb") as h:
+with open("pki/sk_ls.pem", "rb") as h:
     pem_data = h.read()
 sk_ls = serialization.load_pem_private_key(pem_data, None)
 
