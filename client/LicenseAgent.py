@@ -264,16 +264,18 @@ async def tracking():
             confirmation = await ws.recv()
             print("Confirmation received.\nProcessing confirmation...")
 
-            # 12. Decrypt and unpack confirmation
+            # 12. Decrypt confirmation
             confirmation = f.decrypt(confirmation)
-            confirmation_hash, confhash_sig = confirmation[:32], confirmation[32:]
             
-            # 13. Verify confirmation signature
+            # 13. Verify confirmation
             try:
                 print("Checking confirmation signature...")
                 cert_ch.public_key().verify(
-                    confhash_sig,
-                    confirmation_hash,
+                    confirmation,
+                    temp_pk_ch.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
+                    + temp_pk.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
+                    + k
+                    + usedata,
                     padding.PSS(
                         mgf=padding.MGF1(hashes.SHA256()),
                         salt_length=padding.PSS.MAX_LENGTH

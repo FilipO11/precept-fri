@@ -295,17 +295,12 @@ class UsageTracker:
             usedata = ud_f.decrypt(usedata_enc)
             print("Response verified.\nPreparing confirmation...")
 
-            # 12. Calculate confirmation hash, sign it and encrypt it
-            digest = hashes.Hash(hashes.SHA256())
-            digest.update(temp_pk.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
-                        + temp_pk_user.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
-                        + k
-                        + usedata
-                        )
-            confirmation_hash = digest.finalize()
-            
-            sig = sk_ch.sign(
-                confirmation_hash, 
+            # 12. Calculate and encrypt confirmation signature            
+            confirmation = sk_ch.sign(
+                temp_pk.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
+                + temp_pk_user.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
+                + k
+                + usedata, 
                 padding.PSS(
                     mgf=padding.MGF1(hashes.SHA256()),
                     salt_length=padding.PSS.MAX_LENGTH
@@ -313,7 +308,7 @@ class UsageTracker:
                 hashes.SHA256()
             )
             
-            confirmation = f.encrypt(confirmation_hash + sig)
+            confirmation = f.encrypt(confirmation)
             
             await ws.send_data(confirmation)
             print("Confirmation sent.\nStarting next cycle...")
