@@ -299,15 +299,19 @@ if __name__ == "__main__":
             acquire_license()
         print("License acquired. Proceeding in idle mode.")
 
-    with open("token.prp", "rb") as h:
-        token = h.read()
-    with open("pki/sk_user.pem", "rb") as h:
-        pem_data = h.read()
-    sk_user = serialization.load_pem_private_key(pem_data, None)
-    with open("pki/cert_ch.pem", "rb") as c:
-        pem_data = c.read()
-    cert_ch = x509.load_pem_x509_certificate(pem_data)
-    with open("ids/D_ID.id", "rb") as h:
-        did = h.read()
+    # LOAD FROM FILES
+    try:
+        with open("token.prp", "rb") as h:
+            token = h.read()
+        with open("pki/sk_user.pem", "rb") as h:
+            pem_data = h.read()
+        sk_user = serialization.load_pem_private_key(pem_data, None)
+        with open("pki/cert_ch.pem", "rb") as c:
+            pem_data = c.read()
+        cert_ch = x509.load_pem_x509_certificate(pem_data)
+        with open("ids/D_ID.id", "rb") as h:
+            did = h.read()
+    except FileNotFoundError as e:
+        print("File system error. Could not load data from " + e.filename)
 
     asyncio.run(tracking())

@@ -6,6 +6,13 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec, padding
 
+def xor_bytes(s1, s2):
+    res = []
+    for i in range(min(len(s1),len(s2))):
+        res.append(s1[i] ^ s2[i])
+
+    return bytes(res)
+
 class LicenseIssuer:
     def __init__(self):
         self.clients = dict() # Dictionary for storing license acquisition parameters
@@ -25,51 +32,6 @@ class LicenseIssuer:
             params = self.clients[req.remote_addr]
             rm = self.process_confirmation(msgbody, params)
     
-    def process_confirmation(self, confirmation, params):
-        k, temp_pk, temp_pk_user, did, license = params["k"], params["temp_pk"], params["temp_pk_user"], params["did"], params["license"]
-        with open("sn.prp", "rb") as r:
-            sn = int.from_bytes(r.read())
-        with open("DeviceDB.db", "rb") as dbfile:
-            db = pickle.load(dbfile)
-        print("Confirmation received.")
-        
-        # 1. Decrypt symetric ciphertext
-        f = Fernet(k)
-        pt = f.decrypt(confirmation, None)
-        confirmation_hash, token = pt[:512], pt[512:]
-        
-        # 2. Check confirmation signature
-        try:
-            print("Checking confirmation...")
-            cert_user.public_key().verify(
-                confirmation_hash,
-                temp_pk_user.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
-                + temp_pk.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
-                + license,
-                padding.PSS(
-                    mgf=padding.MGF1(hashes.SHA256()),
-                    salt_length=padding.PSS.MAX_LENGTH
-                ),
-                hashes.SHA256()
-            )
-            print("Confirmation verified.\nFinalizing...")
-        except InvalidSignature:
-            print("ERROR: Invalid confirmation signature.")
-            return False
-        
-        # 3. Save token to device database
-        db[did] = token
-        with open("DeviceDB.db", "wb") as dbfile:
-            pickle.dump(db, dbfile)
-        
-        # 4. Increment serial number
-        sn += 1
-        with open("sn.prp", "wb") as h:
-            h.write(sn.to_bytes(8, "big"))
-            
-        print("Finished.\n")
-        return True
-
     def issue_license(self, msg):
         with open("sn.prp", "rb") as r:
             sn = int.from_bytes(r.read())
@@ -187,12 +149,50 @@ class LicenseIssuer:
         print("Issued license.\nWaiting for confirmation...")
         return response.hex(), params
 
-def xor_bytes(s1, s2):
-    res = []
-    for i in range(min(len(s1),len(s2))):
-        res.append(s1[i] ^ s2[i])
-
-    return bytes(res)
+    def process_confirmation(self, confirmation, params):
+        k, temp_pk, temp_pk_user, did, license = params["k"], params["temp_pk"], params["temp_pk_user"], params["did"], params["license"]
+        with open("sn.prp", "rb") as r:
+            sn = int.from_bytes(r.read())
+        with open("DeviceDB.db", "rb") as dbfile:
+            db = pickle.load(dbfile)
+        print("Confirmation received.")
+        
+        # 1. Decrypt symetric ciphertext
+        f = Fernet(k)
+        pt = f.decrypt(confirmation, None)
+        confirmation_hash, token = pt[:512], pt[512:]
+        
+        # 2. Check confirmation signature
+        try:
+            print("Checking confirmation...")
+            cert_user.public_key().verify(
+                confirmation_hash,
+                temp_pk_user.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
+                + temp_pk.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
+                + license,
+                padding.PSS(
+                    mgf=padding.MGF1(hashes.SHA256()),
+                    salt_length=padding.PSS.MAX_LENGTH
+                ),
+                hashes.SHA256()
+            )
+            print("Confirmation verified.\nFinalizing...")
+        except InvalidSignature:
+            print("ERROR: Invalid confirmation signature.")
+            return False
+        
+        # 3. Save token to device database
+        db[did] = token
+        with open("DeviceDB.db", "wb") as dbfile:
+            pickle.dump(db, dbfile)
+        
+        # 4. Increment serial number
+        sn += 1
+        with open("sn.prp", "wb") as h:
+            h.write(sn.to_bytes(8, "big"))
+            
+        print("Finished.\n")
+        return True
 
 class UsageTracker:
     async def on_websocket(self, req, ws):
@@ -316,32 +316,35 @@ class UsageTracker:
             time.sleep(5)
     
 # LOAD FROM FILES
-with open("pki/sk_ls.pem", "rb") as h:
-    pem_data = h.read()
-sk_ls = serialization.load_pem_private_key(pem_data, None)
+try:
+    with open("pki/sk_ls.pem", "rb") as h:
+        pem_data = h.read()
+    sk_ls = serialization.load_pem_private_key(pem_data, None)
 
-with open("pki/sk_ch.pem", "rb") as h:
-    pem_data = h.read()
-sk_ch = serialization.load_pem_private_key(pem_data, None)
+    with open("pki/sk_ch.pem", "rb") as h:
+        pem_data = h.read()
+    sk_ch = serialization.load_pem_private_key(pem_data, None)
 
-with open("pki/cert_user.pem", "rb") as c:
-    pem_data = c.read()
-cert_user = x509.load_pem_x509_certificate(pem_data)
+    with open("pki/cert_user.pem", "rb") as c:
+        pem_data = c.read()
+    cert_user = x509.load_pem_x509_certificate(pem_data)
 
-with open("pki/cert_ls.pem", "rb") as c:
-    cert_ls_pem = c.read()
+    with open("pki/cert_ls.pem", "rb") as c:
+        cert_ls_pem = c.read()
 
-with open("pki/cert_ch.pem", "rb") as c:
-    cert_ch_pem = c.read()
+    with open("pki/cert_ch.pem", "rb") as c:
+        cert_ch_pem = c.read()
 
-with open("ids/LS_ID.id", "rb") as c:
-    lsid = c.read()
+    with open("ids/LS_ID.id", "rb") as c:
+        lsid = c.read()
 
-with open("ids/CH_ID.id", "rb") as c:
-    chid = c.read()
-    
-with open("rules.prp", "rb") as r:
-    rule = r.read()
+    with open("ids/CH_ID.id", "rb") as c:
+        chid = c.read()
+        
+    with open("rules.prp", "rb") as r:
+        rule = r.read()
+except FileNotFoundError as e:
+    print("File system error. Could not load data from " + e.filename)
 
 app = falcon.asgi.App()
 issuer = LicenseIssuer()
