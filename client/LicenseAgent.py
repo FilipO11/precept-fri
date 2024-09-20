@@ -186,6 +186,16 @@ def acquire_license():
 async def tracking():
     # 1. Connect to Clearinghouse
     async with websockets.connect(TRACKINGURI) as ws:
+        did_enc = cert_ch.public_key().encrypt(
+            plaintext=did,
+            padding=padding.OAEP(
+                mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                algorithm=hashes.SHA256(),
+                label=None,
+            ),
+        )
+        await ws.send(did_enc)
+        
         while True:
             request = await ws.recv()
             print("Request received.\nProcessing request...")

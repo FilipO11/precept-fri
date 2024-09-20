@@ -216,20 +216,26 @@ class LicenseIssuer:
 class UsageTracker:
     async def on_websocket(self, req, ws):
         await ws.accept()
+        
+        did = await ws.receive_data()
+        did = sk_ch.decrypt(
+            ciphertext=did,
+            padding=padding.OAEP(
+                    mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                    algorithm=hashes.SHA256(),
+                    label=None,
+            ),
+        )
 
         # 1. Search for token
         with open("DeviceDB.db", "rb") as dbfile:
             db = pickle.load(dbfile)
-            token = None
-            while token is None:
-                for device in db:
-                    if db[device] != b"":
-                        token = db[device]
-                        break
+            token = db[did]
+            if token is None:
+                print("ERROR: Device token not found.\nClosing connection.")
+                await ws.close()
 
         while True:
-            print("Registered licenses detected.\nRequesting usage data...")
-
             # 2. Generate exchange keys
             temp_sk = ec.generate_private_key(ec.SECP256K1())
             temp_pk = temp_sk.public_key()
