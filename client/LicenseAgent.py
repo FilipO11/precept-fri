@@ -284,7 +284,7 @@ async def tracking():
 
             # 10. Assemble symetric plaintext
             f = Fernet(k)
-            pt = exchange_hash + usedata_enc_k + sig + token_ch + usedata_enc
+            pt = exchange_hash + usedata_enc_k + sig + token + usedata_enc
 
             # 11. Assemble response
             response = (
@@ -302,24 +302,16 @@ async def tracking():
             confirmation = await ws.recv()
             print("Confirmation received.\nProcessing confirmation...")
 
-            # 12. Decrypt confirmation
+            # 12. Decrypt and parse confirmation
             confirmation = f.decrypt(confirmation)
+            confirmation_hash, confirmation_sig = confirmation[:32], confirmation[32:]
 
             # 13. Verify confirmation
             try:
                 print("Checking confirmation signature...")
                 cert_ch.public_key().verify(
-                    confirmation,
-                    temp_pk_ch.public_bytes(
-                        serialization.Encoding.PEM,
-                        serialization.PublicFormat.SubjectPublicKeyInfo,
-                    )
-                    + temp_pk.public_bytes(
-                        serialization.Encoding.PEM,
-                        serialization.PublicFormat.SubjectPublicKeyInfo,
-                    )
-                    + k
-                    + usedata,
+                    confirmation_sig,
+                    confirmation_hash,
                     padding.PSS(
                         mgf=padding.MGF1(hashes.SHA256()),
                         salt_length=padding.PSS.MAX_LENGTH,

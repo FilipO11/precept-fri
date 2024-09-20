@@ -272,10 +272,11 @@ class UsageTracker:
             sym_pt = f.decrypt(sym_ct)
 
             # 8. Unpack the symetric plaintext
-            exchange_hash, usedata_enc_k, datasig, usedata_enc = (
+            exchange_hash, usedata_enc_k, datasig, token_u, usedata_enc = (
                 sym_pt[:32],
                 sym_pt[32:544],
                 sym_pt[544:1056],
+                sym_pt[1056:1088],
                 sym_pt[1088:],
             )
 
@@ -328,17 +329,20 @@ class UsageTracker:
             print("Response verified.\nPreparing confirmation...")
 
             # 12. Calculate and encrypt confirmation signature
-            confirmation = sk_ch.sign(
+            digest = hashes.Hash(hashes.SHA256())
+            digest.update(
                 temp_pk.public_bytes(
-                    serialization.Encoding.PEM,
-                    serialization.PublicFormat.SubjectPublicKeyInfo,
+                    serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
                 )
                 + temp_pk_user.public_bytes(
-                    serialization.Encoding.PEM,
-                    serialization.PublicFormat.SubjectPublicKeyInfo,
+                    serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
                 )
                 + k
-                + usedata,
+                + usedata
+            )
+            confirmation = digest.finalize() 
+            confirmation += sk_ch.sign(
+                confirmation,
                 padding.PSS(
                     mgf=padding.MGF1(hashes.SHA256()),
                     salt_length=padding.PSS.MAX_LENGTH,
