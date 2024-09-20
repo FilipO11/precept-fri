@@ -153,22 +153,16 @@ class LicenseIssuer:
         )
         params = {
             "k": k,
-            "temp_pk": temp_pk,
-            "temp_pk_user": temp_pk_user,
             "did": did,
-            "license": license,
         }
 
         print("Issued license.\nWaiting for confirmation...")
         return base64.urlsafe_b64encode(response).decode('ascii'), params
 
     def process_confirmation(self, confirmation, params):
-        k, temp_pk, temp_pk_user, did, license = (
+        k, did = (
             params["k"],
-            params["temp_pk"],
-            params["temp_pk_user"],
             params["did"],
-            params["license"],
         )
         with open("DeviceDB.db", "rb") as dbfile:
             db = pickle.load(dbfile)
@@ -177,22 +171,15 @@ class LicenseIssuer:
         # 1. Decrypt symetric ciphertext
         f = Fernet(k)
         pt = f.decrypt(confirmation, None)
-        confirmation_hash, token = pt[:512], pt[512:]
+        confirmation_hash, token, conf_sig = pt[:32], pt[32:64], pt[64:]
 
         # 2. Check confirmation signature
         try:
             print("Checking confirmation...")
             cert_user.public_key().verify(
-                confirmation_hash,
-                temp_pk_user.public_bytes(
-                    serialization.Encoding.PEM,
-                    serialization.PublicFormat.SubjectPublicKeyInfo,
-                )
-                + temp_pk.public_bytes(
-                    serialization.Encoding.PEM,
-                    serialization.PublicFormat.SubjectPublicKeyInfo,
-                )
-                + license,
+                conf_sig,
+                confirmation_hash
+                + token,
                 padding.PSS(
                     mgf=padding.MGF1(hashes.SHA256()),
                     salt_length=padding.PSS.MAX_LENGTH,

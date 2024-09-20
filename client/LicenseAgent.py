@@ -147,15 +147,23 @@ def acquire_license():
     digest.update(did + license)
     token = digest.finalize()
 
-    # 12. Calculate and sign the confirmation hash
-    confirmation_hash = sk_user.sign(
+    # 12. Calculate the confirmation hash
+    digest = hashes.Hash(hashes.SHA256())
+    digest.update(
         temp_pk.public_bytes(
             serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
         )
         + temp_pk_ls.public_bytes(
             serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
         )
-        + license,
+        + license
+    )
+    confirmation_hash = digest.finalize()    
+    
+    # Sign confirmation hash and token
+    conf_sig = sk_user.sign(
+        confirmation_hash
+        + token,
         padding.PSS(
             mgf=padding.MGF1(hashes.SHA256()), salt_length=padding.PSS.MAX_LENGTH
         ),
@@ -163,7 +171,7 @@ def acquire_license():
     )
 
     # 13. Encrypt the confirmation plaintext
-    confirm_license = f.encrypt(confirmation_hash + token)
+    confirm_license = f.encrypt(confirmation_hash + token + conf_sig)
 
     # 14. Assemble the confirmation
     confirmation = {"type": "confirmation", "body": base64.urlsafe_b64encode(confirm_license).decode('ascii')}
