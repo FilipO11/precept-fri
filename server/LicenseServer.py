@@ -235,11 +235,16 @@ class UsageTracker:
                     serialization.Encoding.PEM,
                     serialization.PublicFormat.SubjectPublicKeyInfo,
                 )
+                + cert_ch_pem
             )
 
-            # 4. Encrypt request plaintext
-            request = cert_user.public_key().encrypt(
-                plaintext=request,
+            # 4. Encrypt request plaintext via hybrid scheme
+            request_enc_k = Fernet.generate_key()
+            req_f = Fernet(request_enc_k)
+            request_enc = req_f.encrypt(request)
+            
+            request_enc_k = cert_user.public_key().encrypt(
+                plaintext=request_enc_k,
                 padding=padding.OAEP(
                     mgf=padding.MGF1(algorithm=hashes.SHA256()),
                     algorithm=hashes.SHA256(),
@@ -247,7 +252,7 @@ class UsageTracker:
                 ),
             )
 
-            await ws.send_data(request)
+            await ws.send_data(request_enc_k + request_enc)
             print("Usage data request sent.\nWaiting for data...")
 
             response = await ws.receive_data()
@@ -272,7 +277,7 @@ class UsageTracker:
             sym_pt = f.decrypt(sym_ct)
 
             # 8. Unpack the symetric plaintext
-            exchange_hash, usedata_enc_k, datasig, token_u, usedata_enc = (
+            exchange_hash, usedata_enc_k, datasig, token_user, usedata_enc = (
                 sym_pt[:32],
                 sym_pt[32:544],
                 sym_pt[544:1056],

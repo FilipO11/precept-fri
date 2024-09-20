@@ -206,21 +206,27 @@ async def tracking():
         
         while True:
             request = await ws.recv()
+            req_k, req_enc = request[:512], request[512:]
             print("Request received.\nProcessing request...")
 
-            # 2. Decrypt and unpack request
-            request = sk_user.decrypt(
-                ciphertext=request,
+            # 2. Decrypt request via hybrid scheme and parse
+            req_k = sk_user.decrypt(
+                ciphertext=req_k,
                 padding=padding.OAEP(
                     mgf=padding.MGF1(algorithm=hashes.SHA256()),
                     algorithm=hashes.SHA256(),
                     label=None,
                 ),
             )
-            token_ch, chid, temp_pk_ch = (
+            
+            req_f = Fernet(req_k)
+            request = req_f.decrypt(req_enc)
+            
+            token_ch, chid, temp_pk_ch, cert_ch_pem = (
                 request[:32],
                 request[32:64],
-                serialization.load_pem_public_key(request[64:]),
+                serialization.load_pem_public_key(request[64:238]),
+                request[238:]
             )
 
             # 3. Verify received token
