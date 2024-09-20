@@ -37,9 +37,6 @@ class LicenseIssuer:
             rm = self.process_confirmation(msgbody, params)
 
     def issue_license(self, msg):
-        with open("sn.prp", "rb") as r:
-            sn = int.from_bytes(r.read())
-
         with open("DeviceDB.db", "rb") as dbfile:
             db = pickle.load(dbfile)
 
@@ -107,7 +104,7 @@ class LicenseIssuer:
         other_data = bytes(32)
 
         # 11. Assemble license
-        license = sn.to_bytes(8, "big") + kid + date + rule + other_data
+        license = os.urandom(8) + kid + date + rule + other_data
         sig_lic = sk_ls.sign(
             license,
             padding.PSS(
@@ -173,8 +170,6 @@ class LicenseIssuer:
             params["did"],
             params["license"],
         )
-        with open("sn.prp", "rb") as r:
-            sn = int.from_bytes(r.read())
         with open("DeviceDB.db", "rb") as dbfile:
             db = pickle.load(dbfile)
         print("Confirmation received.")
@@ -213,11 +208,6 @@ class LicenseIssuer:
         db[did] = token
         with open("DeviceDB.db", "wb") as dbfile:
             pickle.dump(db, dbfile)
-
-        # 4. Increment serial number
-        sn += 1
-        with open("sn.prp", "wb") as h:
-            h.write(sn.to_bytes(8, "big"))
 
         print("Finished.\n")
         return True
