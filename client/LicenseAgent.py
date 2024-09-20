@@ -38,9 +38,7 @@ def acquire_license():
     temp_pk_pem = temp_pk.public_bytes(
         serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
     )
-    did = did + bytes(
-        142
-    )  # DeviceID needs to be padded to the length of the serialized temporary public key - 174 bytes
+    did += bytes(142)  # DeviceID needs to be padded to the length of the serialized temporary public key - 174 bytes
 
     # 2. Calculate TID as asymetrically encrypted (T_U, T_U ^ DID)
     tid = cert_ls.public_key().encrypt(
@@ -53,11 +51,11 @@ def acquire_license():
     )
 
     # 3. Assemble request
-    request = {"type": "request", "body": (contentid + tid).hex()}
+    request = {"type": "request", "body": base64.urlsafe_b64encode(contentid + tid).decode('ascii')}
 
     print("Request sent.\nWaiting for response...")
     response_obj = requests.post(ACQUISITIONURI, json=request)
-    response = bytes.fromhex(response_obj.json()["response"])
+    response = base64.urlsafe_b64decode(response_obj.json()["response"])
     print("Response received.\nProcessing response...")
 
     # 4. Unpack response
@@ -168,7 +166,7 @@ def acquire_license():
     confirm_license = f.encrypt(confirmation_hash + token)
 
     # 14. Assemble the confirmation
-    confirmation = {"type": "confirmation", "body": confirm_license.hex()}
+    confirmation = {"type": "confirmation", "body": base64.urlsafe_b64encode(confirm_license).decode('ascii')}
     requests.post(ACQUISITIONURI, json=confirmation)
 
     # 15. Record persistent values

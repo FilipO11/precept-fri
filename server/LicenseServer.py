@@ -22,7 +22,7 @@ class LicenseIssuer:
     async def on_post(self, req, resp):
         msg = await req.get_media()
         msgtype = msg.get("type")
-        msgbody = bytes.fromhex(msg.get("body"))
+        msgbody = base64.urlsafe_b64decode(msg.get("body"))
 
         if msgtype == "request":
             rm, params = self.issue_license(msgbody)
@@ -163,7 +163,7 @@ class LicenseIssuer:
         }
 
         print("Issued license.\nWaiting for confirmation...")
-        return response.hex(), params
+        return base64.urlsafe_b64encode(response).decode('ascii'), params
 
     def process_confirmation(self, confirmation, params):
         k, temp_pk, temp_pk_user, did, license = (
