@@ -157,7 +157,7 @@ class LicenseIssuer:
         }
 
         print("Issued license.\nWaiting for confirmation...")
-        return base64.urlsafe_b64encode(response).decode('ascii'), params
+        return base64.urlsafe_b64encode(response).decode("ascii"), params
 
     def process_confirmation(self, confirmation, params):
         k, did = (
@@ -178,8 +178,7 @@ class LicenseIssuer:
             print("Checking confirmation...")
             cert_user.public_key().verify(
                 conf_sig,
-                confirmation_hash
-                + token,
+                confirmation_hash + token,
                 padding.PSS(
                     mgf=padding.MGF1(hashes.SHA256()),
                     salt_length=padding.PSS.MAX_LENGTH,
@@ -203,14 +202,14 @@ class LicenseIssuer:
 class UsageTracker:
     async def on_websocket(self, req, ws):
         await ws.accept()
-        
+
         did = await ws.receive_data()
         did = sk_ch.decrypt(
             ciphertext=did,
             padding=padding.OAEP(
-                    mgf=padding.MGF1(algorithm=hashes.SHA256()),
-                    algorithm=hashes.SHA256(),
-                    label=None,
+                mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                algorithm=hashes.SHA256(),
+                label=None,
             ),
         )
 
@@ -242,7 +241,7 @@ class UsageTracker:
             request_enc_k = Fernet.generate_key()
             req_f = Fernet(request_enc_k)
             request_enc = req_f.encrypt(request)
-            
+
             request_enc_k = cert_user.public_key().encrypt(
                 plaintext=request_enc_k,
                 padding=padding.OAEP(
@@ -337,15 +336,17 @@ class UsageTracker:
             digest = hashes.Hash(hashes.SHA256())
             digest.update(
                 temp_pk.public_bytes(
-                    serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
+                    serialization.Encoding.PEM,
+                    serialization.PublicFormat.SubjectPublicKeyInfo,
                 )
                 + temp_pk_user.public_bytes(
-                    serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
+                    serialization.Encoding.PEM,
+                    serialization.PublicFormat.SubjectPublicKeyInfo,
                 )
                 + k
                 + usedata
             )
-            confirmation = digest.finalize() 
+            confirmation = digest.finalize()
             confirmation += sk_ch.sign(
                 confirmation,
                 padding.PSS(

@@ -38,7 +38,9 @@ def acquire_license():
     temp_pk_pem = temp_pk.public_bytes(
         serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
     )
-    did += bytes(142)  # DeviceID needs to be padded to the length of the serialized temporary public key - 174 bytes
+    did += bytes(
+        142
+    )  # DeviceID needs to be padded to the length of the serialized temporary public key - 174 bytes
 
     # 2. Calculate TID as asymetrically encrypted (T_U, T_U ^ DID)
     tid = cert_ls.public_key().encrypt(
@@ -51,7 +53,10 @@ def acquire_license():
     )
 
     # 3. Assemble request
-    request = {"type": "request", "body": base64.urlsafe_b64encode(contentid + tid).decode('ascii')}
+    request = {
+        "type": "request",
+        "body": base64.urlsafe_b64encode(contentid + tid).decode("ascii"),
+    }
 
     print("Request sent.\nWaiting for response...")
     response_obj = requests.post(ACQUISITIONURI, json=request)
@@ -158,12 +163,11 @@ def acquire_license():
         )
         + license
     )
-    confirmation_hash = digest.finalize()    
-    
+    confirmation_hash = digest.finalize()
+
     # Sign confirmation hash and token
     conf_sig = sk_user.sign(
-        confirmation_hash
-        + token,
+        confirmation_hash + token,
         padding.PSS(
             mgf=padding.MGF1(hashes.SHA256()), salt_length=padding.PSS.MAX_LENGTH
         ),
@@ -174,7 +178,10 @@ def acquire_license():
     confirm_license = f.encrypt(confirmation_hash + token + conf_sig)
 
     # 14. Assemble the confirmation
-    confirmation = {"type": "confirmation", "body": base64.urlsafe_b64encode(confirm_license).decode('ascii')}
+    confirmation = {
+        "type": "confirmation",
+        "body": base64.urlsafe_b64encode(confirm_license).decode("ascii"),
+    }
     requests.post(ACQUISITIONURI, json=confirmation)
 
     # 15. Record persistent values
@@ -203,7 +210,7 @@ async def tracking():
             ),
         )
         await ws.send(did_enc)
-        
+
         while True:
             request = await ws.recv()
             req_k, req_enc = request[:512], request[512:]
@@ -218,15 +225,15 @@ async def tracking():
                     label=None,
                 ),
             )
-            
+
             req_f = Fernet(req_k)
             request = req_f.decrypt(req_enc)
-            
+
             token_ch, chid, temp_pk_ch, cert_ch_pem = (
                 request[:32],
                 request[32:64],
                 serialization.load_pem_public_key(request[64:238]),
-                request[238:]
+                request[238:],
             )
 
             # 3. Verify received token
