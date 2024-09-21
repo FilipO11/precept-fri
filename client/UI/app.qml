@@ -7,7 +7,7 @@ ApplicationWindow {
     title: "Client"
     Text {
         anchors.centerIn: parent
-        text: "Client"
+        text: "Thank you for buying the license!"
         font.pixelSize: 24
     }
 }
