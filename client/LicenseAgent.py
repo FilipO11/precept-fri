@@ -76,12 +76,13 @@ def acquire_license():
     # 6. Decrypt asymetric ciphertext and unpack it
     f = Fernet(k)
     sym_pt = f.decrypt(sym_ct)
-    exchange_hash, license, license_k, contentid, sig_fer = (
+    exchange_hash, license, license_k, contentid, sig_fer, cert_ls_pem = (
         sym_pt[:32],
         sym_pt[32:920],
         sym_pt[920:1432],
         sym_pt[1432:1464],
         sym_pt[1464:1976],
+        sym_pt[1976:],
     )
 
     # 7. Verify response signature
