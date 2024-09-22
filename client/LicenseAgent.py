@@ -1,4 +1,4 @@
-import os, base64, requests, asyncio, websockets
+import os, base64, requests, asyncio, websockets, zmq
 from cryptography import x509
 from cryptography.fernet import Fernet
 from cryptography.exceptions import InvalidSignature
@@ -8,6 +8,7 @@ from cryptography.hazmat.primitives.asymmetric import ec, padding
 LICENSESERVER = "localhost:8000"
 ACQUISITIONURI = "http://" + LICENSESERVER + "/acqlic"
 TRACKINGURI = "ws://" + LICENSESERVER + "/tracking"
+SOCKETADDR = "tcp://localhost:8100"
 
 
 def xor_bytes(s1, s2):
@@ -339,6 +340,10 @@ async def tracking():
 
 
 if __name__ == "__main__":
+    context = zmq.Context()
+    socket = context.socket(zmq.REP)
+    socket.bind(SOCKETADDR)
+    message = socket.recv()
     # TRY TO OPEN LICENSE, REQUEST IF NOT FOUND
     license = None
     while license is None:
@@ -347,8 +352,10 @@ if __name__ == "__main__":
                 license = h.read()
         except FileNotFoundError:
             print("No license found. Issuing request.")
+            socket.send(b"No license found. Issuing request.")
             acquire_license()
         print("License acquired. Proceeding in idle mode.")
+        socket.send(b"License acquired. Thank you.")
 
     # LOAD FROM FILES
     try:
