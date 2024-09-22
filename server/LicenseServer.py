@@ -42,6 +42,9 @@ class LicenseIssuer:
 
         with open("rules.prp", "rb") as r:
             rule = r.read()
+        
+        with open("otherdata.prp", "rb") as o:
+            other_data = o.read()
 
         # 1. Unpack message: ContentID, TID (encrypted)
         contentid, tid_enc = msg[:32], msg[32:]
@@ -101,7 +104,6 @@ class LicenseIssuer:
         date = datetime.date.today().isoformat().encode("utf-8")
 
         # 10. Load other data
-        other_data = bytes(32)
 
         # 11. Assemble license
         license = os.urandom(8) + kid + date + rule + other_data

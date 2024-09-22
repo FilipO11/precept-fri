@@ -356,7 +356,7 @@ if __name__ == "__main__":
             socket.send(b"requesting")
             acquire_license()
         print("License acquired. Proceeding in idle mode.")
-        socket.recv()
+        # socket.recv()
         socket.send(b"acquired")
 
     # LOAD FROM FILES
@@ -369,9 +369,24 @@ if __name__ == "__main__":
         with open("pki/cert_ch.pem", "rb") as c:
             pem_data = c.read()
         cert_ch = x509.load_pem_x509_certificate(pem_data)
+        with open("ids/Content_ID.id", "rb") as h:
+            cid = h.read()
         with open("ids/D_ID.id", "rb") as h:
             did = h.read()
     except FileNotFoundError as e:
         print("File system error. Could not load data from " + e.filename)
+    
+    # DECRYPT CONTENT
+    rules, other_data = license[50:58], license[58:90]
+    digest = hashes.Hash(hashes.SHA256())
+    digest.update(rules + other_data + cid)
+    k = base64.urlsafe_b64encode(digest.finalize())
+    f = Fernet(k)
+
+    with open("content.prp", "rb") as imgfile:
+        img = imgfile.read()
+    img = f.decrypt(img)
+    with open("UI/image.jpg", "wb") as h:
+        h.write(img)
 
     asyncio.run(tracking())

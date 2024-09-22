@@ -1,4 +1,6 @@
-import os, cert, pickle
+import base64, os, cert, pickle
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
 
 # PREPARE DIRECTORIES
 if not os.path.exists("server/pki"):
@@ -43,14 +45,32 @@ with open("server/ids/LS_ID.id", "wb") as h:
 with open("server/ids/CH_ID.id", "wb") as h:
     h.write(os.urandom(32))
 with open("client/ids/Content_ID.id", "wb") as h:
-    h.write(os.urandom(32))
+    cid = os.urandom(32)
+    h.write(cid)
 with open("client/ids/D_ID.id", "wb") as h:
     did = os.urandom(32)
     h.write(did)
 
 # CREATE RULES FILE
 with open("server/rules.prp", "wb") as h:
-    h.write(os.urandom(8))
+    rules = os.urandom(8)
+    h.write(rules)
+
+with open("server/otherdata.prp", "wb") as h:
+    other_data = os.urandom(32)
+    h.write(other_data)
+
+# ENCRYPT CONTENT
+digest = hashes.Hash(hashes.SHA256())
+digest.update(rules + other_data + cid)
+k = base64.urlsafe_b64encode(digest.finalize())
+f = Fernet(k)
+
+with open("image.jpg", "rb") as imgfile:
+    img = imgfile.read()
+img = f.encrypt(img)
+with open("client/content.prp", "wb") as h:
+    h.write(img)
 
 # GENERATE DEVICE DB
 db = {}
