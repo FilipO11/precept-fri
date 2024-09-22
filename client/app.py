@@ -17,16 +17,24 @@ class Backend(QObject):
     def updater(self, curr_time):
         self.updated.emit(curr_time)
     def bootUp(self):
-        # subprocess.Popen(['C:/Python312/python.exe', './LicenseAgent.exe'])
         global laproc
-        laproc = subprocess.Popen(['C:/Python312/python.exe', './LicenseAgent.py'], stdout="lalogs.txt")
+        laproc = subprocess.Popen(['C:/Python312/python.exe', './LicenseAgent.py'], stdout=subprocess.DEVNULL)
         t_thread = threading.Thread(target=self._bootUp)
         t_thread.daemon = True
         t_thread.start()
     def _bootUp(self):
-        socket.send(b"liccheck")
-        message = socket.recv()
-        self.updater(message.decode("utf-8"))
+        message = None
+        while message != b"acquired":
+            socket.send(b"liccheck")
+            message = socket.recv()
+            if message == b"requesting":
+                display_text = "Acquiring your license. Please wait."
+            elif message == b"acquired":
+                display_text = "License acquired. Thank you."
+            else:
+                display_text = "License agent error."
+            self.updater(display_text)
+            sleep(5)
         
 
 QQuickWindow.setSceneGraphBackend('software') # legacy fallback
@@ -39,8 +47,8 @@ app = QGuiApplication(sys.argv)
 engine = QQmlApplicationEngine()
 engine.quit.connect(app.quit)
 engine.load('./UI/app.qml')
-atexit.register(cleanup)
 back_end = Backend()
 engine.rootObjects()[0].setProperty('backend', back_end)
 back_end.bootUp()
+atexit.register(cleanup)
 sys.exit(app.exec())

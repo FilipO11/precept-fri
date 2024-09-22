@@ -343,7 +343,8 @@ if __name__ == "__main__":
     context = zmq.Context()
     socket = context.socket(zmq.REP)
     socket.bind(SOCKETADDR)
-    message = socket.recv()
+    socket.recv()
+    
     # TRY TO OPEN LICENSE, REQUEST IF NOT FOUND
     license = None
     while license is None:
@@ -352,10 +353,11 @@ if __name__ == "__main__":
                 license = h.read()
         except FileNotFoundError:
             print("No license found. Issuing request.")
-            socket.send(b"No license found. Issuing request.")
+            socket.send(b"requesting")
             acquire_license()
         print("License acquired. Proceeding in idle mode.")
-        socket.send(b"License acquired. Thank you.")
+        socket.recv()
+        socket.send(b"acquired")
 
     # LOAD FROM FILES
     try:
