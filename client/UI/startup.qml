@@ -6,6 +6,8 @@ ApplicationWindow {
     visible: true
     width: 600
     height: 500
+    x: (screen.desktopAvailableWidth / 2) - width - 12
+    y: (screen.desktopAvailableHeight / 2) - (height / 2)
     title: "Loading PrecePt test app"
     property string displayText: "Waiting for license agent..."
     property QtObject backend
