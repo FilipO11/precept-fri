@@ -9,12 +9,10 @@ LICENSESERVER = "localhost:8000"
 ACQUISITIONURI = "http://" + LICENSESERVER + "/acqlic"
 TRACKINGURI = "ws://" + LICENSESERVER + "/tracking"
 SOCKETADDR = "tcp://localhost:8100"
+DECRYPTIONDIR = "UI/decrypted"
 
 def cleanup():
-    try:
-        shutil.rmtree("UI/decrypted")
-    except:
-        print("Could not remove decrypted directory.")
+    shutil.rmtree(os.path.join(DECRYPTIONDIR), ignore_errors=True)
 
 
 def xor_bytes(s1, s2):
@@ -346,6 +344,7 @@ async def tracking():
 
 
 if __name__ == "__main__":
+    atexit.register(cleanup)
     context = zmq.Context()
     socket = context.socket(zmq.REP)
     socket.bind(SOCKETADDR)
@@ -392,10 +391,9 @@ if __name__ == "__main__":
     with open("content.prp", "rb") as imgfile:
         img = imgfile.read()
     img = f.decrypt(img)
-    if not pathlib.Path.exists("UI/decrypted"):
-        pathlib.Path.mkdir("UI/decrypted")
+    if not pathlib.Path.exists(pathlib.Path(DECRYPTIONDIR)):
+        pathlib.Path.mkdir(pathlib.Path(DECRYPTIONDIR))
     with open("UI/decrypted/image.jpg", "wb") as h:
         h.write(img)
 
-    atexit.register(cleanup)
     asyncio.run(tracking())
