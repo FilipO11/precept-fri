@@ -1,4 +1,4 @@
-import os, base64, requests, asyncio, websockets, zmq
+import os, pathlib, shutil, atexit, base64, requests, asyncio, websockets, zmq
 from cryptography import x509
 from cryptography.fernet import Fernet
 from cryptography.exceptions import InvalidSignature
@@ -9,6 +9,12 @@ LICENSESERVER = "localhost:8000"
 ACQUISITIONURI = "http://" + LICENSESERVER + "/acqlic"
 TRACKINGURI = "ws://" + LICENSESERVER + "/tracking"
 SOCKETADDR = "tcp://localhost:8100"
+
+def cleanup():
+    try:
+        shutil.rmtree("UI/decrypted")
+    except:
+        print("Could not remove decrypted directory.")
 
 
 def xor_bytes(s1, s2):
@@ -386,7 +392,10 @@ if __name__ == "__main__":
     with open("content.prp", "rb") as imgfile:
         img = imgfile.read()
     img = f.decrypt(img)
-    with open("UI/image.jpg", "wb") as h:
+    if not pathlib.Path.exists("UI/decrypted"):
+        pathlib.Path.mkdir("UI/decrypted")
+    with open("UI/decrypted/image.jpg", "wb") as h:
         h.write(img)
 
+    atexit.register(cleanup)
     asyncio.run(tracking())

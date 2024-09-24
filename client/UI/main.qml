@@ -13,7 +13,7 @@ ApplicationWindow {
         Image {
             sourceSize.width: parent.width
             sourceSize.height: parent.height
-            source: "./image.jpg"
+            source: "./decrypted/image.jpg"
             fillMode: Image.PreserveAspectFit
         }
         Text {
