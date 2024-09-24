@@ -7,21 +7,29 @@ from PyQt6.QtCore import QObject, pyqtSignal
 
 LICENSEAGENT = "tcp://localhost:8100"
 
+
 def cleanup():
     laproc.kill()
+
 
 class Backend(QObject):
     def __init__(self):
         QObject.__init__(self)
-    updated = pyqtSignal(str, arguments=['updater'])
-    def updater(self, curr_time):
-        self.updated.emit(curr_time)
+
+    updated = pyqtSignal(str, arguments=["updater"])
+
+    def updater(self, display_text):
+        self.updated.emit(display_text)
+
     def bootUp(self):
         global laproc
-        laproc = subprocess.Popen(['C:/Python312/python.exe', './LicenseAgent.py'], stdout=subprocess.DEVNULL)
+        laproc = subprocess.Popen(
+            ["C:/Python312/python.exe", "./LicenseAgent.py"], stdout=subprocess.DEVNULL
+        )
         t_thread = threading.Thread(target=self._bootUp)
         t_thread.daemon = True
         t_thread.start()
+
     def _bootUp(self):
         message = None
         while message != b"acquired":
@@ -35,9 +43,9 @@ class Backend(QObject):
                 display_text = "License agent error."
             self.updater(display_text)
             sleep(5)
-        
 
-QQuickWindow.setSceneGraphBackend('software') # legacy fallback
+
+QQuickWindow.setSceneGraphBackend("software")  # legacy fallback
 
 context = zmq.Context()
 socket = context.socket(zmq.REQ)
@@ -46,9 +54,9 @@ socket.connect(LICENSEAGENT)
 app = QGuiApplication(sys.argv)
 engine = QQmlApplicationEngine()
 engine.quit.connect(app.quit)
-engine.load('./UI/startup.qml')
+engine.load("./UI/startup.qml")
 back_end = Backend()
-engine.rootObjects()[0].setProperty('backend', back_end)
+engine.rootObjects()[0].setProperty("backend", back_end)
 back_end.bootUp()
 atexit.register(cleanup)
 sleep(5)

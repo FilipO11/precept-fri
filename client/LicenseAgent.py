@@ -11,6 +11,7 @@ TRACKINGURI = "ws://" + LICENSESERVER + "/tracking"
 SOCKETADDR = "tcp://localhost:8100"
 DECRYPTIONDIR = "UI/decrypted"
 
+
 def cleanup():
     shutil.rmtree(os.path.join(DECRYPTIONDIR), ignore_errors=True)
 
@@ -349,7 +350,7 @@ if __name__ == "__main__":
     socket = context.socket(zmq.REP)
     socket.bind(SOCKETADDR)
     socket.recv()
-    
+
     # TRY TO OPEN LICENSE, REQUEST IF NOT FOUND
     license = None
     while license is None:
@@ -361,7 +362,6 @@ if __name__ == "__main__":
             socket.send(b"requesting")
             acquire_license()
         print("License acquired. Proceeding in idle mode.")
-        # socket.recv()
         socket.send(b"acquired")
 
     # LOAD FROM FILES
@@ -380,7 +380,7 @@ if __name__ == "__main__":
             did = h.read()
     except FileNotFoundError as e:
         print("File system error. Could not load data from " + e.filename)
-    
+
     # DECRYPT CONTENT
     rules, other_data = license[50:58], license[58:90]
     digest = hashes.Hash(hashes.SHA256())
