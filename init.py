@@ -1,11 +1,16 @@
 import os, cert, pickle
 
 # PREPARE DIRECTORIES
-if not os.path.exists("server/pki"): os.mkdir("server/pki")
-if not os.path.exists("server/ids"): os.mkdir("server/ids")
-if not os.path.exists("client/pki"): os.mkdir("client/pki")
-if not os.path.exists("client/ids"): os.mkdir("client/ids")
-if not os.path.exists("ca"): os.mkdir("ca")
+if not os.path.exists("server/pki"):
+    os.mkdir("server/pki")
+if not os.path.exists("server/ids"):
+    os.mkdir("server/ids")
+if not os.path.exists("client/pki"):
+    os.mkdir("client/pki")
+if not os.path.exists("client/ids"):
+    os.mkdir("client/ids")
+if not os.path.exists("ca"):
+    os.mkdir("ca")
 
 # CREATE CERTIFICATES
 cert_ca, sk_ca = cert.create_ca("PrecePt CA")
@@ -33,29 +38,24 @@ cert.save_certificate(cert_ch, "server/pki/cert_ch.pem")
 cert.save_certificate(cert_ch, "client/pki/cert_ch.pem")
 
 # GENERATE IDS
-with open("server/ids/LS_ID.id", "wb") as h: 
+with open("server/ids/LS_ID.id", "wb") as h:
     h.write(os.urandom(32))
-with open("server/ids/CH_ID.id", "wb") as h: 
+with open("server/ids/CH_ID.id", "wb") as h:
     h.write(os.urandom(32))
-with open("client/ids/Content_ID.id", "wb") as h: 
+with open("client/ids/Content_ID.id", "wb") as h:
     h.write(os.urandom(32))
 with open("client/ids/D_ID.id", "wb") as h:
     did = os.urandom(32)
     h.write(did)
 
-# INITIALIZE SERIAL NUMBER RECORD
-sn = 0
-with open("server/sn.prp", "wb") as r:
-    r.write(sn.to_bytes(8, "big"))
-
 # CREATE RULES FILE
-with open("server/rules.prp", "wb") as h: 
+with open("server/rules.prp", "wb") as h:
     h.write(os.urandom(8))
 
 # GENERATE DEVICE DB
 db = {}
-db[did] = b''
+db[did] = b""
 for i in range(100):
-    db[os.urandom(32)] = b''
+    db[os.urandom(32)] = b""
 with open("server/DeviceDB.db", "wb") as dbfile:
     pickle.dump(db, dbfile)

@@ -4,6 +4,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import hashes
 import datetime
 
+
 def create_ca(common_name: str):
     private_key_ca = rsa.generate_private_key(public_exponent=65537, key_size=4096)
 
@@ -30,7 +31,9 @@ def create_csr(common_name: str):
 
     builder = x509.CertificateSigningRequestBuilder()
 
-    subject_name_csr = x509.Name([x509.NameAttribute(x509.NameOID.COMMON_NAME, common_name)])
+    subject_name_csr = x509.Name(
+        [x509.NameAttribute(x509.NameOID.COMMON_NAME, common_name)]
+    )
     builder = builder.subject_name(subject_name_csr)
 
     csr = builder.sign(private_key_csr, hashes.SHA256())
@@ -47,7 +50,7 @@ def issue_certificate(cert_ca, private_key_ca, csr):
     builder = builder.serial_number(x509.random_serial_number())
 
     for ext in csr.extensions:
-        builder = builder.add_extension(ext.value, critical=False)    
+        builder = builder.add_extension(ext.value, critical=False)
 
     now = datetime.datetime.now(datetime.UTC)
     builder = builder.not_valid_before(now)
@@ -58,13 +61,15 @@ def issue_certificate(cert_ca, private_key_ca, csr):
 
 def save_private_key(private_key, filename):
     with open(filename, "wb") as f:
-        f.write(private_key.private_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PrivateFormat.TraditionalOpenSSL,
-            encryption_algorithm=serialization.NoEncryption()
-        ))
+        f.write(
+            private_key.private_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PrivateFormat.TraditionalOpenSSL,
+                encryption_algorithm=serialization.NoEncryption(),
+            )
+        )
 
 
 def save_certificate(cert, filename):
     with open(filename, "wb") as f:
-        f.write(cert.public_bytes(serialization.Encoding.PEM))    
+        f.write(cert.public_bytes(serialization.Encoding.PEM))
