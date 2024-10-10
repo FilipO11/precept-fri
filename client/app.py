@@ -1,3 +1,4 @@
+import shutil
 import sys, os, threading, zmq, subprocess, atexit
 from time import sleep
 from PyQt6.QtGui import QGuiApplication
@@ -10,6 +11,7 @@ LICENSEAGENT = "tcp://localhost:8100"
 
 def cleanup():
     laproc.kill()
+    # shutil.rmtree(os.path.join("UI/decrypted"), ignore_errors=True)
 
 
 class Backend(QObject):
