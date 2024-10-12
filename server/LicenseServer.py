@@ -30,11 +30,19 @@ class LicenseIssuer:
                 params  # Save session parameters for confirmation processing
             )
             resp.media = {"response": rm}
-            resp.status = falcon.HTTP_200
+            if params != {}:
+                resp.status = falcon.HTTP_200
+            else:
+                resp.status = falcon.HTTP_403
 
         elif msgtype == "confirmation":
             params = self.clients[req.remote_addr]
             rm = self.process_confirmation(msgbody, params)
+            resp.media = {"response": rm}
+            if rm:
+                resp.status = falcon.HTTP_200
+            else:
+                resp.status = falcon.HTTP_400
 
     def issue_license(self, msg):
         with open("DeviceDB.db", "rb") as dbfile:
@@ -67,7 +75,7 @@ class LicenseIssuer:
         # 4. Check if DeviceID is in the device database
         if not (did in db):
             print("ERROR: Device not registered!")
-            exit(1)  # SHOULD BE HANDLED
+            return base64.urlsafe_b64encode("NOTREGISTERED").decode("ascii"), {}
 
         # 5. Generate exchange keys and nonce
         temp_sk = ec.generate_private_key(ec.SECP256K1())
@@ -221,6 +229,7 @@ class UsageTracker:
             token = db[did]
             if token is None:
                 print("ERROR: Device token not found.\nClosing connection.")
+                await ws.send_data(bytes(4))
                 await ws.close()
 
         while True:
@@ -302,7 +311,7 @@ class UsageTracker:
 
             if exchange_hash != digest.finalize():
                 print("ERROR: Invalid exchange hash.")
-                exit(1)  # SHOULD BE HANDLED
+                await ws.send("INVALID EXCHANGE HASH")
 
             # 10. Check response signature
             try:

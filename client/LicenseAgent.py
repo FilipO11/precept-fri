@@ -340,6 +340,7 @@ async def tracking():
                 )
             except InvalidSignature:
                 print("ERROR: Invalid confirmation signature.")
+                ws.send("INVALID CONFIRMATION SIGNATURE")
                 continue
             print("Confirmation verified. Proceeding in idle mode.")
 
@@ -361,6 +362,7 @@ if __name__ == "__main__":
             print("No license found. Issuing request.")
             socket.send(b"requesting")
             acquire_license()
+            continue
         print("License acquired. Proceeding in idle mode.")
         socket.send(b"acquired")
 
