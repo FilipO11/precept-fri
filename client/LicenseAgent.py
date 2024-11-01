@@ -2,7 +2,7 @@ import os, pathlib, shutil, atexit, base64, requests, asyncio, websockets, zmq
 from cryptography import x509
 from cryptography.fernet import Fernet
 from cryptography.exceptions import InvalidSignature
-from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives import hashes, serialization, constant_time
 from cryptography.hazmat.primitives.asymmetric import ec, padding
 
 LICENSESERVER = "localhost:8000"
@@ -150,7 +150,7 @@ def acquire_license():
     )
     check_exchange_hash = digest.finalize()
 
-    if exchange_hash != check_exchange_hash:
+    if not constant_time.bytes_eq(exchange_hash, check_exchange_hash):
         print("ERROR: Invalid exchange hash.")
         exit(1)
 

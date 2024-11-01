@@ -3,7 +3,7 @@ import datetime, time, os, base64, pickle, falcon, falcon.asgi, uvicorn
 from cryptography import x509
 from cryptography.fernet import Fernet
 from cryptography.exceptions import InvalidSignature
-from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives import hashes, serialization, constant_time
 from cryptography.hazmat.primitives.asymmetric import ec, padding
 
 
@@ -309,7 +309,7 @@ class UsageTracker:
                 + nonce
             )
 
-            if exchange_hash != digest.finalize():
+            if not constant_time.bytes_eq(exchange_hash, digest.finalize()):
                 print("ERROR: Invalid exchange hash.")
                 await ws.send("INVALID EXCHANGE HASH")
 
